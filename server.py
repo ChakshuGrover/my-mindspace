@@ -191,7 +191,7 @@ class MindProxyHandler(http.server.SimpleHTTPRequestHandler):
 socketserver.TCPServer.allow_reuse_address = True
 
 with socketserver.TCPServer(("", PORT), MindProxyHandler) as httpd:
-    print(f"myMindScape Secure Proxy Server running at http://localhost:{PORT}")
+    print(f"MyMindSpace Secure Proxy Server running at http://localhost:{PORT}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

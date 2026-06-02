@@ -517,7 +517,7 @@ async function analyzeInputWithAI(inputText) {
   const model = safeStorage.getItem(STORAGE_KEYS.AI_MODEL) || 'gemma-4-31b-it';
   
   const systemInstruction = `
-    You are a premium, highly smart AI engine running inside the "myMindScape" personal knowledge-base app.
+    You are a premium, highly smart AI engine running inside the "MyMindSpace" personal knowledge-base app.
     Analyze the user input and categorize it into exactly one of these types: "quote", "color", "article", or "note".
     
     CRITICAL: Keep your internal thinking/reasoning process extremely brief (limit to at most 1-2 sentences) to ensure ultra-fast generation.
@@ -935,7 +935,7 @@ function renderGrid() {
           <div class="card-placeholder-shimmer">
             <div class="card-placeholder-header">
               <span class="sparkle-icon-animated">✨</span>
-              <span>myMindScape is thinking...</span>
+              <span>MyMindSpace is thinking...</span>
             </div>
             <div class="card-placeholder-line card-placeholder-line--long"></div>
             <div class="card-placeholder-line card-placeholder-line--short"></div>
@@ -1200,7 +1200,7 @@ function showToast(message) {
 }
 
 async function refreshData() {
-  showToast('Refreshing your MindScape...');
+  showToast('Refreshing your MindSpace...');
   try {
     await verifyAndFetchData();
   } catch (err) {

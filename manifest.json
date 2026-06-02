@@ -1,7 +1,7 @@
 {
-  "name": "myMindScape",
-  "short_name": "MindScape",
-  "description": "Your serverless, private, AI-powered visual mindscape.",
+  "name": "MyMindSpace",
+  "short_name": "MindSpace",
+  "description": "Your serverless, private, AI-powered visual mindspace.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
