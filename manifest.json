@@ -1,0 +1,19 @@
+{
+  "name": "myMindScape",
+  "short_name": "MindScape",
+  "description": "Your serverless, private, AI-powered visual mindscape.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0d0f12",
+  "theme_color": "#0d0f12",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "app_icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

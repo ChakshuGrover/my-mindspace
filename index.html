@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>myMindScape — Extension for your mind</title>
+  <meta name="description" content="A private, serverless, AI-powered space to save quotes, articles, notes, and colors. Stored securely in your own Google Drive." />
+  
+  <!-- PWA & Mobile Web App Support -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="myMindScape" />
+  <link rel="apple-touch-icon" href="app_icon.png" />
+  <meta name="theme-color" content="#0d0f12" />
+
+  <!-- Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  
+  <!-- Google API Libraries -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  
+  <!-- Styling -->
+  <link rel="stylesheet" href="style.css?v=1.1.5" />
+</head>
+<body>
+
+  <!-- Background Blur Shapes for Modern Glassmorphic Look -->
+  <div class="bg-blur bg-blur--1"></div>
+  <div class="bg-blur bg-blur--2"></div>
+  <div class="bg-blur bg-blur--3"></div>
+
+  <!-- Landing / Login Page -->
+  <div id="landing-page" class="landing-container">
+    <header class="landing-header">
+      <div class="brand">
+        <svg viewBox="0 0 40 40" fill="none" class="brand-logo">
+          <rect x="2" y="2" width="36" height="36" rx="8" stroke="currentColor" stroke-width="2" />
+          <path d="M10 14h20M10 21h20M10 28h12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
+        </svg>
+        <span>myMindScape</span>
+      </div>
+      <button id="btn-landing-settings" class="btn-settings-landing" title="Configure App">⚙️ Settings</button>
+    </header>
+    <main class="landing-main">
+      <h1 class="landing-title">The private extension<br/>for your mind.</h1>
+      <p class="landing-subtitle">
+        A private digital canvas to save your quotes, articles, notes, and colors. 
+        Enhanced with <strong>Gemma 4 31B AI</strong> to auto-tag and summarize everything, 
+        and stored 100% privately in your own <strong>Google Drive</strong>.
+      </p>
+      
+      <div class="login-box">
+        <button id="btn-login" class="btn btn--primary btn--large">
+          <svg class="btn-icon" viewBox="0 0 24 24" width="18" height="18">
+            <path fill="currentColor" d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114A5.53 5.53 0 0 1 8.5 13a5.53 5.53 0 0 1 5.49-5.514c2.256 0 4.024.999 5.093 1.996l3.23-3.23C20.396 4.333 17.514 3 14 3 8.477 3 4 7.477 4 13s4.477 10 10 10c5.52 0 10-4.48 10-10 0-.712-.083-1.4-.24-2.065H12.24z"/>
+          </svg>
+          Connect Google Drive
+        </button>
+        <p class="login-hint">No database servers, no tracking, no subscription fees. Fully serverless.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Main Application Page -->
+  <div id="app-page" class="app-container" hidden>
+    
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <svg viewBox="0 0 40 40" fill="none" class="brand-logo">
+          <rect x="2" y="2" width="36" height="36" rx="8" stroke="currentColor" stroke-width="2" />
+          <path d="M10 14h20M10 21h20M10 28h12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
+        </svg>
+        <span class="brand-name">myMindScape</span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <h4 class="nav-section-title">Views</h4>
+          <button class="nav-item active" data-filter="all">
+            <span class="nav-icon">🧠</span> All Mind
+          </button>
+        </div>
+
+        <div class="nav-section">
+          <h4 class="nav-section-title">Types</h4>
+          <button class="nav-item" data-filter="type-quote">
+            <span class="nav-icon">“</span> Quotes
+          </button>
+          <button class="nav-item" data-filter="type-article">
+            <span class="nav-icon">🔗</span> Articles
+          </button>
+          <button class="nav-item" data-filter="type-note">
+            <span class="nav-icon">📝</span> Notes
+          </button>
+          <button class="nav-item" data-filter="type-color">
+            <span class="nav-icon">🎨</span> Colors
+          </button>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-section-header">
+            <h4 class="nav-section-title">Folders</h4>
+            <button id="btn-new-folder" class="btn-action-small" title="Create new folder">+</button>
+          </div>
+          <div id="sidebar-folders" class="folders-list">
+            <!-- Dynamically populated folders -->
+          </div>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-profile">
+          <img id="user-avatar" src="" alt="User Avatar" class="user-avatar" />
+          <div class="user-info">
+            <span id="user-name" class="user-name">Loading...</span>
+            <span id="sync-status" class="sync-badge">
+              <span class="sync-dot"></span>
+              <span id="sync-text" class="sync-text">Synced</span>
+            </span>
+          </div>
+        </div>
+        <div class="sidebar-actions">
+          <button id="btn-refresh" class="btn-footer" title="Refresh">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 4v6h-6"></path>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+          </button>
+          <button id="btn-settings" class="btn-footer" title="Settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+          <button id="btn-logout" class="btn-footer" title="Logout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Workspace Container -->
+    <main class="workspace">
+      
+      <!-- Mobile Header (Only visible on mobile screens) -->
+      <header class="mobile-header">
+        <div class="mobile-brand">
+          <svg viewBox="0 0 40 40" fill="none" class="brand-logo" style="inline-size: 24px; block-size: 24px;">
+            <rect x="2" y="2" width="36" height="36" rx="8" stroke="currentColor" stroke-width="2" />
+            <path d="M10 14h20M10 21h20M10 28h12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
+          </svg>
+          <span class="mobile-brand-name">myMindScape</span>
+        </div>
+        <div class="mobile-header-actions">
+          <button id="btn-mobile-refresh" class="btn-mobile-action" title="Refresh">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 4v6h-6"></path>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+          </button>
+          <button id="btn-mobile-settings" class="btn-mobile-action" title="Settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+          <button id="btn-mobile-logout" class="btn-mobile-action" title="Logout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Top Search & Bar -->
+      <section class="workspace-header">
+        <div class="search-container">
+          <input type="text" id="search-input" placeholder="Search your mind... (try 'blue', 'quotes', or tags)" autocomplete="off" />
+          <div class="search-shortcuts">
+            <span class="shortcut-badge">⌘K</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Main Visual Grid (Masonry Canvas) -->
+      <section class="canvas-container">
+        <div id="mind-grid" class="mind-masonry">
+          <!-- Dynamically populated cards -->
+        </div>
+
+        <!-- Empty State View -->
+        <div id="empty-state" class="empty-state" hidden>
+          <div class="empty-icon">💡</div>
+          <h3>Your mind is completely clear.</h3>
+          <p>Click the addition button below to save notes, quotes, colors, or links.</p>
+        </div>
+      </section>
+
+      <!-- Float Actions (Add Card Button) -->
+      <div class="floating-add-container">
+        <button id="btn-quick-add" class="floating-add-btn" title="Add to your mind">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Quick Add Modal Overlay -->
+  <div id="add-modal" class="modal" hidden>
+    <div class="modal-backdrop" id="add-modal-backdrop"></div>
+    <div class="modal-panel modal-panel--add">
+      <header class="modal-header">
+        <h3>Remember Something</h3>
+        <button class="btn-close" id="btn-close-add-modal">&times;</button>
+      </header>
+      <div class="modal-body">
+        <textarea id="add-input" placeholder="Paste a link, type a quote, write a note, or enter a hex color like #7a00df..." autofocus></textarea>
+        
+        <div class="add-meta-options">
+          <label class="select-label">
+            <span>Optionally add to folder:</span>
+            <select id="add-folder-select">
+              <option value="">No folder (Inbox)</option>
+              <!-- Dynamic options -->
+            </select>
+          </label>
+        </div>
+      </div>
+      <footer class="modal-footer">
+        <span class="ai-status-indicator" id="ai-status-indicator" hidden>
+          <span class="sparkle-icon">✨</span> AI analyzing...
+        </span>
+        <button class="btn btn--ghost" id="btn-cancel-add">Cancel</button>
+        <button class="btn btn--primary" id="btn-save-add">Add to myMindScape</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Settings Modal Overlay -->
+  <div id="settings-modal" class="modal" hidden>
+    <div class="modal-backdrop" id="settings-modal-backdrop"></div>
+    <div class="modal-panel modal-panel--settings">
+      <header class="modal-header">
+        <h3>Configure your myMindScape</h3>
+        <button class="btn-close" id="btn-close-settings-modal">&times;</button>
+      </header>
+      <div class="modal-body">
+        <form id="settings-form">
+
+
+          <section class="settings-section">
+            <h4 class="settings-title">Google AI Studio (Gemini API)</h4>
+            <p class="settings-hint">Used for automatic categorization, summaries, and tagging using Gemma 4 31B and Gemini 3.1 Flash Lite. Free tier available.</p>
+            
+            <label class="form-label">
+              <span>Gemini API Key</span>
+              <input type="password" id="setting-gemini-key" placeholder="Enter your Gemini API Key" />
+            </label>
+            
+            <label class="form-label">
+              <span>Primary AI Model</span>
+              <select id="setting-model">
+                <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite (Fast & Lightweight)</option>
+                <option value="gemma-4-31b-it" selected>Gemma 4 31B (Instruction Tuned)</option>
+              </select>
+            </label>
+          </section>
+        </form>
+      </div>
+      <footer class="modal-footer">
+        <button class="btn btn--ghost" id="btn-close-settings">Cancel</button>
+        <button class="btn btn--primary" id="btn-save-settings">Save Configuration</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Create Folder Modal Overlay -->
+  <div id="folder-modal" class="modal" hidden>
+    <div class="modal-backdrop" id="folder-modal-backdrop"></div>
+    <div class="modal-panel modal-panel--small">
+      <header class="modal-header">
+        <h3>Create Folder</h3>
+        <button class="btn-close" id="btn-close-folder-modal">&times;</button>
+      </header>
+      <div class="modal-body">
+        <label class="form-label">
+          <span>Folder Name</span>
+          <input type="text" id="folder-name-input" placeholder="e.g., Japan Trip, Design Inspo" />
+        </label>
+        
+        <div class="folder-styling-row">
+          <label class="form-label">
+            <span>Emoji</span>
+            <input type="text" id="folder-emoji-input" value="📁" maxlength="2" style="text-align: center;" />
+          </label>
+          <label class="form-label">
+            <span>Color Swatch</span>
+            <input type="color" id="folder-color-input" value="#7a00df" />
+          </label>
+        </div>
+      </div>
+      <footer class="modal-footer">
+        <button class="btn btn--ghost" id="btn-cancel-folder">Cancel</button>
+        <button class="btn btn--primary" id="btn-save-folder">Create</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Detail Card Modal Overlay (Displays summaries & full text) -->
+  <div id="detail-modal" class="modal" hidden>
+    <div class="modal-backdrop" id="detail-modal-backdrop"></div>
+    <div class="modal-panel modal-panel--detail">
+      <header class="modal-header">
+        <div id="detail-type-badge" class="detail-type-badge">Article</div>
+        <button class="btn-close" id="btn-close-detail-modal">&times;</button>
+      </header>
+      <div class="modal-body" id="detail-modal-content">
+        <!-- Dynamically rendered detailed content -->
+      </div>
+      <footer class="modal-footer">
+        <div id="detail-tags-list" class="detail-tags-list">
+          <!-- Dynamic tags list -->
+        </div>
+        <div class="detail-actions">
+          <button class="btn btn--danger btn--small" id="btn-delete-item">Delete</button>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="app.js?v=1.3.0" defer></script>
+</body>
+</html>

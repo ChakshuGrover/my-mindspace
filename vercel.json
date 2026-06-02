@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "routes": [
+    {
+      "src": "/api/gemini",
+      "dest": "api/gemini.js"
+    },
+    {
+      "src": "/api/scrape",
+      "dest": "api/scrape.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
+  ]
+}
