@@ -602,23 +602,18 @@ html {
 }
 
 .mind-masonry {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 20px;
+  columns: 4 280px;
+  column-gap: 20px;
   inline-size: 100%;
   margin: 0 auto;
 }
 
-/* --- Visual Card Styling --- */
 .mind-card {
-  display: flex;
-  flex-direction: column;
-  height: 250px;
-  box-sizing: border-box;
+  break-inside: avoid;
   background-color: var(--bg-glass);
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-md);
-  padding: 20px;
+  padding: 24px;
   margin-block-end: 20px;
   backdrop-filter: blur(16px);
   transition: transform var(--transition-normal), border-color var(--transition-fast), box-shadow var(--transition-normal);
@@ -672,6 +667,17 @@ html {
   gap: 12px;
 }
 
+/* Card Type: To-Dos */
+.mind-card--todo {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .card-note-title {
   font-weight: 700;
   font-size: 1.1rem;
@@ -682,13 +688,8 @@ html {
 .card-note-desc {
   font-size: 0.85rem;
   color: var(--text-secondary);
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
-  line-clamp: 4;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.5;
+  margin-block-start: 8px;
 }
 
 /* Card Type: Colors */
@@ -728,13 +729,12 @@ html {
 /* Card Type: Articles */
 .mind-card--article {
   padding: 0;
-  display: flex;
-  flex-direction: column;
 }
 
 .card-article-thumb {
   inline-size: 100%;
-  block-size: 110px; /* Fixed height for image inside card */
+  block-size: auto;
+  aspect-ratio: 16 / 10;
   object-fit: cover;
   border-block-end: 1px solid var(--border-glass);
 }
@@ -784,7 +784,7 @@ html {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-block-start: auto; /* Push tags to the bottom of the card */
+  margin-block-start: 12px;
 }
 
 .card-tag {
@@ -1242,12 +1242,6 @@ html {
 @media (max-width: 1024px) {
   .app-container {
     grid-template-columns: 1fr;
-  }
-  
-  .mind-masonry {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
   }
   
   .sidebar {

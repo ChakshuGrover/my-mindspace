@@ -1337,6 +1337,26 @@ async function saveDetailEdits() {
     return;
   }
 
+  showToast('AI is analyzing updated changes...');
+  setSyncStatus('syncing', 'AI Analyzing...');
+
+  // Setup input for AI
+  let aiInputText = editContentVal || '';
+  if (item.type === 'article') {
+    const editUrlVal = document.getElementById('edit-detail-url')?.value.trim();
+    aiInputText = `Webpage URL: ${editUrlVal || item.url}\nTitle: ${editTitleVal}\nDescription: ${editContentVal}`;
+  } else if (item.type === 'note') {
+    aiInputText = `Title: ${editTitleVal}\nContent: ${editContentVal}`;
+  }
+
+  let aiParsed = null;
+  try {
+    aiParsed = await analyzeInputWithAI(aiInputText);
+  } catch (aiErr) {
+    console.error('AI analysis during edit failed:', aiErr);
+    showToast('AI analysis failed. Using basic save.');
+  }
+
   // Update item object properties
   if (editTitleVal !== undefined) {
     item.title = editTitleVal;
@@ -1347,9 +1367,17 @@ async function saveDetailEdits() {
     item.content.reading_time_mins = Math.max(1, Math.ceil(item.content.word_count / 200));
   }
 
+  // If AI completed successfully, update AI analysis fields
+  if (aiParsed) {
+    item.ai_analysis = aiParsed.ai_analysis || item.ai_analysis;
+    // Update title only if user did not provide one and AI returned one
+    if (!editTitleVal && aiParsed.title) {
+      item.title = aiParsed.title;
+    }
+  }
+
   // Special properties per type
   if (item.type === 'todo') {
-    const editContentVal = document.getElementById('edit-detail-content')?.value.trim();
     if (editContentVal !== undefined) {
       const lines = editContentVal.split('\n').map(l => l.trim()).filter(l => l.length > 0);
       const oldTodos = item.content.todos || [];
@@ -1364,6 +1392,13 @@ async function saveDetailEdits() {
       });
       // Also write raw_text for searchability
       item.content.raw_text = lines.join(', ');
+    }
+    // Make sure we have a clean summary and todo tag
+    item.ai_analysis = item.ai_analysis || {};
+    item.ai_analysis.summary = 'To-Do Checklist';
+    item.ai_analysis.tags = item.ai_analysis.tags || [];
+    if (!item.ai_analysis.tags.includes('todo')) {
+      item.ai_analysis.tags.push('todo');
     }
   }
   else if (item.type === 'article') {
