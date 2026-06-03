@@ -1462,3 +1462,27 @@ html {
 .btn-prompt--confirm:hover {
   background-color: #9226ff;
 }
+
+/* --- To-Do / Checklist Styling --- */
+.card-todo-item, .detail-todo-item {
+  transition: opacity var(--transition-fast);
+}
+
+.card-todo-item:hover, .detail-todo-item:hover {
+  opacity: 0.95;
+}
+
+.card-todo-checkbox, .detail-todo-checkbox {
+  accent-color: var(--accent-purple);
+  cursor: pointer;
+}
+
+.card-todo-text, .detail-todo-text {
+  font-weight: 400;
+  transition: color var(--transition-fast), text-decoration var(--transition-fast);
+}
+
+.card-todo-text.completed, .detail-todo-text.completed {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}

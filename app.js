@@ -415,6 +415,9 @@ async function loadMindItems() {
           });
           const item = await contentRes.json();
           item._drive_file_id = file.id; // Keep tracking the Google Drive File ID
+          if (item.type === 'color' || item.type === 'quote') {
+            item.type = 'note';
+          }
           return item;
         } catch (e) {
           console.error(`Error loading file content for ${file.name}:`, e);
@@ -678,9 +681,11 @@ function mockAnalysis(inputText) {
 async function saveNewItem() {
   const addInput = document.getElementById('add-input');
   const folderSelect = document.getElementById('add-folder-select');
+  const todoToggle = document.getElementById('add-todo-toggle');
   
   const rawInputText = addInput.value.trim();
   const folderId = folderSelect.value;
+  const isTodo = todoToggle ? todoToggle.checked : false;
 
   if (!rawInputText) {
     showToast('Input cannot be empty.');
@@ -689,6 +694,7 @@ async function saveNewItem() {
 
   // Close modal and reset input immediately!
   addInput.value = '';
+  if (todoToggle) todoToggle.checked = false;
   closeModal('add-modal');
   showToast('Adding to your Mind...');
 
@@ -697,7 +703,7 @@ async function saveNewItem() {
   const placeholderItem = {
     id: placeholderId,
     created_at: new Date().toISOString(),
-    type: 'note',
+    type: isTodo ? 'todo' : 'note',
     title: 'Processing...',
     folders: folderId ? [folderId] : [],
     isPlaceholder: true,
@@ -709,7 +715,7 @@ async function saveNewItem() {
   renderGrid();
 
   // Run the background save asynchronously
-  runBackgroundSave(placeholderId, rawInputText, folderId);
+  runBackgroundSave(placeholderId, rawInputText, folderId, isTodo);
 }
 
 function addNewItemDirectly(rawInputText, folderId = '') {
@@ -746,10 +752,10 @@ function handleShareQueryParams() {
   }
 }
 
-async function runBackgroundSave(placeholderId, rawInputText, folderId) {
+async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo = false) {
   try {
     // Check if input is a URL to scrape metadata
-    const isUrl = rawInputText.startsWith('http://') || rawInputText.startsWith('https://') || rawInputText.startsWith('www.');
+    const isUrl = !isTodo && (rawInputText.startsWith('http://') || rawInputText.startsWith('https://') || rawInputText.startsWith('www.'));
     let aiInputText = rawInputText;
     let scrapedImage = null;
     let scrapedTitle = null;
@@ -775,10 +781,10 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId) {
     const newItem = {
       id: 'item-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
       created_at: new Date().toISOString(),
-      type: (aiParsed.type === 'note' && isUrl) ? 'article' : aiParsed.type,
-      title: aiParsed.title || scrapedTitle || 'Saved Item',
+      type: isTodo ? 'todo' : ((aiParsed.type === 'note' && isUrl) ? 'article' : aiParsed.type),
+      title: isTodo ? (rawInputText.split('\n')[0].trim().substring(0, 40) || 'To-Do List') : (aiParsed.title || scrapedTitle || 'Saved Item'),
       folders: folderId ? [folderId] : [],
-      url: (aiParsed.type === 'article' || isUrl) ? rawInputText : '',
+      url: (!isTodo && (aiParsed.type === 'article' || isUrl)) ? rawInputText : '',
       image: scrapedImage || '',
       ai_analysis: aiParsed.ai_analysis || {
         summary: 'Saved note.',
@@ -787,15 +793,29 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId) {
         key_takeaways: []
       },
       content: {
-        raw_text: aiParsed.content?.raw_text || rawInputText,
+        raw_text: isTodo ? rawInputText : (aiParsed.content?.raw_text || rawInputText),
         word_count: rawInputText.split(/\s+/).length,
         reading_time_mins: Math.max(1, Math.ceil(rawInputText.split(/\s+/).length / 200))
       }
     };
 
-    // If it's a color, clean up hex
-    if (newItem.type === 'color' && !newItem.content.raw_text.startsWith('#')) {
-      newItem.content.raw_text = rawInputText;
+    // If it's a todo, parse lines into todo list
+    if (isTodo) {
+      const lines = rawInputText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      newItem.content.todos = lines.map(line => ({
+        text: line,
+        completed: false
+      }));
+      newItem.ai_analysis.summary = 'To-Do Checklist';
+      newItem.ai_analysis.tags = newItem.ai_analysis.tags || [];
+      if (!newItem.ai_analysis.tags.includes('todo')) {
+        newItem.ai_analysis.tags.push('todo');
+      }
+    }
+
+    // Map color/quote to note
+    if (newItem.type === 'color' || newItem.type === 'quote') {
+      newItem.type = 'note';
     }
 
     setSyncStatus('syncing', 'Saving to Google Drive...');
@@ -842,17 +862,31 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId) {
     const newItem = {
       id: 'item-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
       created_at: new Date().toISOString(),
-      type: fallback.type,
-      title: fallback.title,
+      type: isTodo ? 'todo' : fallback.type,
+      title: isTodo ? (rawInputText.split('\n')[0].trim().substring(0, 40) || 'To-Do List') : fallback.title,
       folders: folderId ? [folderId] : [],
-      url: (fallback.type === 'article') ? rawInputText : '',
+      url: (!isTodo && fallback.type === 'article') ? rawInputText : '',
       ai_analysis: fallback.ai_analysis,
       content: {
-        raw_text: fallback.content.raw_text,
+        raw_text: rawInputText,
         word_count: rawInputText.split(/\s+/).length,
         reading_time_mins: Math.max(1, Math.ceil(rawInputText.split(/\s+/).length / 200))
       }
     };
+
+    if (isTodo) {
+      const lines = rawInputText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      newItem.content.todos = lines.map(line => ({
+        text: line,
+        completed: false
+      }));
+      newItem.ai_analysis.summary = 'To-Do Checklist';
+      newItem.ai_analysis.tags = ['todo'];
+    }
+
+    if (newItem.type === 'color' || newItem.type === 'quote') {
+      newItem.type = 'note';
+    }
 
     try {
       setSyncStatus('syncing', 'Saving fallback...');
@@ -936,10 +970,9 @@ function renderGrid() {
     if (currentFilter.startsWith('folder-')) {
       const folderId = currentFilter.substring(7);
       if (!item.folders || !item.folders.includes(folderId)) return false;
-    } else if (currentFilter === 'type-quote' && item.type !== 'quote') return false;
-    else if (currentFilter === 'type-article' && item.type !== 'article') return false;
+    } else if (currentFilter === 'type-article' && item.type !== 'article') return false;
     else if (currentFilter === 'type-note' && item.type !== 'note') return false;
-    else if (currentFilter === 'type-color' && item.type !== 'color') return false;
+    else if (currentFilter === 'type-todo' && item.type !== 'todo') return false;
 
     // 2. Filter by search query
     if (query) {
@@ -987,23 +1020,29 @@ function renderGrid() {
       card.className = `mind-card mind-card--${item.type}`;
 
       // Card rendering template based on types
-      if (item.type === 'quote') {
-        const quotePart = extractQuoteParts(item.content.raw_text);
+      if (item.type === 'todo') {
+        const todos = item.content.todos || [];
+        const visibleTodos = todos.slice(0, 5);
+        const remainingCount = todos.length - visibleTodos.length;
+        
+        const todoListHtml = visibleTodos.map((todo, idx) => `
+          <label class="card-todo-item" style="display: flex; align-items: flex-start; gap: 8px; font-size: 0.9rem; margin-block-end: 6px; cursor: pointer; pointer-events: auto;">
+            <input type="checkbox" class="card-todo-checkbox" data-item-id="${item.id}" data-todo-index="${idx}" ${todo.completed ? 'checked' : ''} style="margin-block-start: 3px;" />
+            <span class="card-todo-text" style="text-decoration: ${todo.completed ? 'line-through' : 'none'}; color: ${todo.completed ? 'var(--text-muted)' : 'var(--text-primary)'};">${todo.text}</span>
+          </label>
+        `).join('');
+
         card.innerHTML = `
-          <div class="card-quote-text">“${quotePart.text}”</div>
-          <div class="card-quote-author">${quotePart.author || item.title || 'Unknown'}</div>
-        `;
-      } 
-      else if (item.type === 'color') {
-        const hex = item.content.raw_text.trim();
-        card.innerHTML = `
-          <div class="card-color-swatch" style="background-color: ${hex};"></div>
-          <div class="card-color-meta">
-            <span class="card-color-hex">${hex}</span>
-            <span class="card-color-name">${item.ai_analysis.vibe}</span>
+          <div class="card-note-title" style="margin-block-end: 12px;">${item.title}</div>
+          <div class="card-todo-list" style="margin-block-end: 12px; pointer-events: auto;">
+            ${todoListHtml || '<div style="color: var(--text-muted); font-style: italic;">Empty list</div>'}
+            ${remainingCount > 0 ? `<div style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-inline-start: 22px; margin-block-start: 4px;">+ ${remainingCount} more tasks</div>` : ''}
+          </div>
+          <div class="card-tags">
+            ${(item.ai_analysis.tags || []).slice(0, 3).map(tag => `<span class="card-tag">#${tag}</span>`).join('')}
           </div>
         `;
-      } 
+      }
       else if (item.type === 'article') {
         const thumbImg = item.image ? `<img class="card-article-thumb" src="${item.image}" alt="${item.title}" />` : '';
         card.innerHTML = `
@@ -1028,7 +1067,38 @@ function renderGrid() {
       }
 
       // Add click to open Detail Modal
-      card.addEventListener('click', () => showDetailModal(item));
+      card.addEventListener('click', (e) => {
+        if (e.target.classList.contains('card-todo-checkbox')) {
+          return; // Handled by checkbox change listener
+        }
+        showDetailModal(item);
+      });
+
+      // Bind checkbox change handlers inside card
+      card.querySelectorAll('.card-todo-checkbox').forEach(cb => {
+        cb.addEventListener('change', async (e) => {
+          const idx = parseInt(e.target.dataset.todoIndex, 10);
+          if (!item.content.todos) item.content.todos = [];
+          item.content.todos[idx].completed = cb.checked;
+          
+          // Re-render text style locally
+          const textEl = cb.nextElementSibling;
+          if (textEl) {
+            textEl.style.textDecoration = cb.checked ? 'line-through' : 'none';
+            textEl.style.color = cb.checked ? 'var(--text-muted)' : 'var(--text-primary)';
+          }
+
+          setSyncStatus('syncing', 'Updating task...');
+          try {
+            await uploadFileContent(item._drive_file_id, item);
+            setSyncStatus('synced', 'Synced');
+          } catch (err) {
+            console.error('Failed to update task state on Drive:', err);
+            showToast('Sync failed.');
+            setSyncStatus('synced', 'Sync Failed');
+          }
+        });
+      });
 
       grid.appendChild(card);
     });
@@ -1087,34 +1157,51 @@ function showDetailModal(item) {
   }
 
   // Render modal content
-  if (item.type === 'quote') {
-    const parts = extractQuoteParts(item.content.raw_text);
+  if (item.type === 'todo') {
+    const todos = item.content.todos || [];
+    const todoListHtml = todos.map((todo, idx) => `
+      <label class="detail-todo-item" style="display: flex; align-items: flex-start; gap: 10px; font-size: 1.05rem; margin-block-end: 12px; cursor: pointer;">
+        <input type="checkbox" class="detail-todo-checkbox" data-todo-index="${idx}" ${todo.completed ? 'checked' : ''} style="transform: scale(1.15); margin-block-start: 4px;" />
+        <span class="detail-todo-text" style="text-decoration: ${todo.completed ? 'line-through' : 'none'}; color: ${todo.completed ? 'var(--text-muted)' : 'var(--text-primary)'};">${todo.text}</span>
+      </label>
+    `).join('');
+
     contentContainer.innerHTML = `
       <div class="detail-content">
-        <div class="detail-quote-display">
-          “${parts.text}”
-          <div class="detail-quote-author">${parts.author || item.title || 'Unknown'}</div>
-        </div>
-        <div class="detail-summary-box">
-          <div class="detail-summary-title">AI Reflection</div>
-          <p>${item.ai_analysis.summary}</p>
+        <h2 class="detail-title" style="margin-block-end: 20px;">${item.title}</h2>
+        <div class="detail-todo-list" style="margin-block-end: 24px;">
+          ${todoListHtml || '<div style="color: var(--text-muted); font-style: italic;">No tasks in this list.</div>'}
         </div>
       </div>
     `;
-  } 
-  else if (item.type === 'color') {
-    const hex = item.content.raw_text;
-    contentContainer.innerHTML = `
-      <div class="detail-content">
-        <div class="detail-color-large" style="background-color: ${hex};">${hex}</div>
-        <h2 class="detail-title">${item.title}</h2>
-        <div class="detail-summary-box">
-          <div class="detail-summary-title">AI Vibe & Mood Description</div>
-          <p>${item.ai_analysis.summary}</p>
-        </div>
-      </div>
-    `;
-  } 
+
+    // Bind change listener for detail checkboxes
+    contentContainer.querySelectorAll('.detail-todo-checkbox').forEach(cb => {
+      cb.addEventListener('change', async (e) => {
+        const idx = parseInt(e.target.dataset.todoIndex, 10);
+        if (!item.content.todos) item.content.todos = [];
+        item.content.todos[idx].completed = cb.checked;
+
+        // Re-render text style locally
+        const textEl = cb.nextElementSibling;
+        if (textEl) {
+          textEl.style.textDecoration = cb.checked ? 'line-through' : 'none';
+          textEl.style.color = cb.checked ? 'var(--text-muted)' : 'var(--text-primary)';
+        }
+
+        setSyncStatus('syncing', 'Updating task...');
+        try {
+          await uploadFileContent(item._drive_file_id, item);
+          setSyncStatus('synced', 'Synced');
+          renderGrid(); // Sync grid card state
+        } catch (err) {
+          console.error('Failed to update task state on Drive:', err);
+          showToast('Sync failed.');
+          setSyncStatus('synced', 'Sync Failed');
+        }
+      });
+    });
+  }
   else if (item.type === 'article') {
     const detailImg = item.image ? `<img class="detail-article-image" src="${item.image}" alt="${item.title}" style="inline-size: 100%; block-size: auto; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 12px; margin-block-end: 20px;" />` : '';
     contentContainer.innerHTML = `
@@ -1199,25 +1286,15 @@ function enterEditMode() {
   const contentContainer = document.getElementById('detail-modal-content');
   const item = currentDetailItem;
 
-  if (item.type === 'quote') {
+  if (item.type === 'todo') {
+    const todoLines = (item.content.todos || []).map(t => t.text).join('\n');
     contentContainer.innerHTML = `
       <div class="detail-content">
-        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Quote Text</label>
-        <textarea id="edit-detail-content" class="edit-textarea" style="inline-size: 100%; block-size: 120px; font-size: 1.25rem; font-style: italic; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 12px; border-radius: 8px; resize: vertical; box-sizing: border-box; margin-block-end: 16px;">${item.content.raw_text}</textarea>
+        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">List Title</label>
+        <input type="text" id="edit-detail-title" class="edit-input" style="inline-size: 100%; font-size: 1.25rem; font-weight: 700; margin-block-end: 16px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 10px; border-radius: 8px; box-sizing: border-box;" value="${item.title.replace(/"/g, '&quot;')}" />
         
-        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Author / Title</label>
-        <input type="text" id="edit-detail-title" class="edit-input" style="inline-size: 100%; font-size: 1rem; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 10px; border-radius: 8px; box-sizing: border-box;" value="${item.title.replace(/"/g, '&quot;')}" />
-      </div>
-    `;
-  }
-  else if (item.type === 'color') {
-    contentContainer.innerHTML = `
-      <div class="detail-content">
-        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Color Name / Title</label>
-        <input type="text" id="edit-detail-title" class="edit-input" style="inline-size: 100%; font-size: 1.2rem; font-weight: 600; margin-block-end: 16px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 10px; border-radius: 8px; box-sizing: border-box;" value="${item.title.replace(/"/g, '&quot;')}" />
-        
-        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Color Hex Code</label>
-        <input type="text" id="edit-detail-content" class="edit-input" style="inline-size: 100%; font-size: 1rem; font-family: monospace; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 10px; border-radius: 8px; box-sizing: border-box;" value="${item.content.raw_text}" />
+        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Tasks (One per line)</label>
+        <textarea id="edit-detail-content" class="edit-textarea" style="inline-size: 100%; block-size: 220px; font-family: inherit; font-size: 1rem; line-height: 1.5; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 12px; border-radius: 8px; resize: vertical; box-sizing: border-box;">${todoLines}</textarea>
       </div>
     `;
   }
@@ -1271,7 +1348,25 @@ async function saveDetailEdits() {
   }
 
   // Special properties per type
-  if (item.type === 'article') {
+  if (item.type === 'todo') {
+    const editContentVal = document.getElementById('edit-detail-content')?.value.trim();
+    if (editContentVal !== undefined) {
+      const lines = editContentVal.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      const oldTodos = item.content.todos || [];
+      
+      // Try to preserve checked status of identical task text
+      item.content.todos = lines.map(line => {
+        const oldMatch = oldTodos.find(ot => ot.text === line);
+        return {
+          text: line,
+          completed: oldMatch ? oldMatch.completed : false
+        };
+      });
+      // Also write raw_text for searchability
+      item.content.raw_text = lines.join(', ');
+    }
+  }
+  else if (item.type === 'article') {
     const editUrlVal = document.getElementById('edit-detail-url')?.value.trim();
     if (editUrlVal !== undefined) {
       item.url = editUrlVal;
