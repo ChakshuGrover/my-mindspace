@@ -602,20 +602,23 @@ html {
 }
 
 .mind-masonry {
-  columns: 4 280px;
-  column-gap: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
   inline-size: 100%;
   margin: 0 auto;
 }
 
 /* --- Visual Card Styling --- */
 .mind-card {
-  break-inside: avoid;
+  display: flex;
+  flex-direction: column;
+  height: 250px;
+  box-sizing: border-box;
   background-color: var(--bg-glass);
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-md);
-  padding: 24px;
-  margin-block-end: 20px;
+  padding: 20px;
   backdrop-filter: blur(16px);
   transition: transform var(--transition-normal), border-color var(--transition-fast), box-shadow var(--transition-normal);
   cursor: pointer;
@@ -672,6 +675,19 @@ html {
   font-weight: 700;
   font-size: 1.1rem;
   letter-spacing: -0.02em;
+  margin-block-end: 4px;
+}
+
+.card-note-desc {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  line-clamp: 4;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Card Type: Colors */
@@ -711,12 +727,13 @@ html {
 /* Card Type: Articles */
 .mind-card--article {
   padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .card-article-thumb {
   inline-size: 100%;
-  block-size: auto;
-  aspect-ratio: 16 / 10;
+  block-size: 110px; /* Fixed height for image inside card */
   object-fit: cover;
   border-block-end: 1px solid var(--border-glass);
 }
@@ -766,7 +783,7 @@ html {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-block-start: 12px;
+  margin-block-start: auto; /* Push tags to the bottom of the card */
 }
 
 .card-tag {
@@ -1058,6 +1075,13 @@ html {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap; /* Keep open, edit, and delete on the same row */
 }
 
 /* Details Page Typography */
