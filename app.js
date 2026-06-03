@@ -23,6 +23,8 @@ let driveFiles = []; // Array of downloaded mind items
 let folders = []; // Array of virtual folders
 let currentFilter = 'all'; // 'all', 'type-quote', 'folder-ID', etc.
 let searchTimeout = null;
+let currentDetailItem = null;
+let isEditingDetail = false;
 
 // Default credentials for sandbox testing (User can override in settings)
 const DEFAULT_CLIENT_ID = '345073896444-jvm03jjn5dn6pfh95d7jbtlh4shq4ooj.apps.googleusercontent.com';
@@ -1054,11 +1056,35 @@ function showDetailModal(item) {
   typeBadge.textContent = item.type;
   tagsContainer.innerHTML = (item.ai_analysis.tags || []).map(tag => `<span class="card-tag">#${tag}</span>`).join('');
 
+  currentDetailItem = item;
+  isEditingDetail = false;
+
+  // Handle Edit button binding
+  const btnEdit = document.getElementById('btn-edit-item');
+  if (btnEdit) {
+    const newBtnEdit = btnEdit.cloneNode(true);
+    btnEdit.parentNode.replaceChild(newBtnEdit, btnEdit);
+    newBtnEdit.textContent = 'Edit';
+    newBtnEdit.className = 'btn btn--secondary btn--small';
+    newBtnEdit.addEventListener('click', handleEditSaveClick);
+  }
+
   // Handle deletion binding
   const btnDelete = document.getElementById('btn-delete-item');
   const newBtnDelete = btnDelete.cloneNode(true);
   btnDelete.parentNode.replaceChild(newBtnDelete, btnDelete); // Remove previous listeners
   newBtnDelete.addEventListener('click', () => deleteItem(item.id, item._drive_file_id));
+
+  // Configure prominent open link button
+  const btnOpenLink = document.getElementById('btn-open-link');
+  if (btnOpenLink) {
+    if (item.type === 'article' && item.url) {
+      btnOpenLink.href = item.url;
+      btnOpenLink.style.display = 'inline-flex';
+    } else {
+      btnOpenLink.style.display = 'none';
+    }
+  }
 
   // Render modal content
   if (item.type === 'quote') {
@@ -1095,7 +1121,6 @@ function showDetailModal(item) {
       <div class="detail-content">
         ${detailImg}
         <h2 class="detail-title">${item.title}</h2>
-        <a href="${item.url}" target="_blank" class="detail-source-link">🔗 View original article</a>
         
         <div class="detail-summary-box">
           <div class="detail-summary-title">AI Abstract Summary</div>
@@ -1119,7 +1144,7 @@ function showDetailModal(item) {
         ${item.content.raw_text ? `
           <div>
             <h4 class="detail-summary-title" style="margin-block-end: 16px;">Parsed Document Content</h4>
-            <div class="detail-body-text">${item.content.raw_text}</div>
+            <div class="detail-body-text" style="white-space: pre-wrap;">${item.content.raw_text}</div>
           </div>
         ` : ''}
       </div>
@@ -1130,11 +1155,6 @@ function showDetailModal(item) {
       <div class="detail-content">
         <h2 class="detail-title">${item.title}</h2>
         
-        <div class="detail-summary-box">
-          <div class="detail-summary-title">AI Abstract Summary</div>
-          <p>${item.ai_analysis.summary}</p>
-        </div>
-
         ${item.ai_analysis.key_takeaways && item.ai_analysis.key_takeaways.length > 0 ? `
           <div>
             <h4 class="detail-summary-title" style="margin-block-end: 16px;">Action Items & Outline</h4>
@@ -1151,13 +1171,138 @@ function showDetailModal(item) {
 
         <div>
           <h4 class="detail-summary-title" style="margin-block-end: 16px;">Raw Content</h4>
-          <div class="detail-body-text">${item.content.raw_text}</div>
+          <div class="detail-body-text" style="white-space: pre-wrap;">${item.content.raw_text}</div>
         </div>
       </div>
     `;
   }
 
   openModal('detail-modal');
+}
+
+function handleEditSaveClick() {
+  if (isEditingDetail) {
+    saveDetailEdits();
+  } else {
+    enterEditMode();
+  }
+}
+
+function enterEditMode() {
+  isEditingDetail = true;
+  const btnEdit = document.getElementById('btn-edit-item');
+  if (btnEdit) {
+    btnEdit.textContent = 'Save';
+    btnEdit.className = 'btn btn--primary btn--small';
+  }
+
+  const contentContainer = document.getElementById('detail-modal-content');
+  const item = currentDetailItem;
+
+  if (item.type === 'quote') {
+    contentContainer.innerHTML = `
+      <div class="detail-content">
+        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Quote Text</label>
+        <textarea id="edit-detail-content" class="edit-textarea" style="inline-size: 100%; block-size: 120px; font-size: 1.25rem; font-style: italic; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 12px; border-radius: 8px; resize: vertical; box-sizing: border-box; margin-block-end: 16px;">${item.content.raw_text}</textarea>
+        
+        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Author / Title</label>
+        <input type="text" id="edit-detail-title" class="edit-input" style="inline-size: 100%; font-size: 1rem; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 10px; border-radius: 8px; box-sizing: border-box;" value="${item.title.replace(/"/g, '&quot;')}" />
+      </div>
+    `;
+  }
+  else if (item.type === 'color') {
+    contentContainer.innerHTML = `
+      <div class="detail-content">
+        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Color Name / Title</label>
+        <input type="text" id="edit-detail-title" class="edit-input" style="inline-size: 100%; font-size: 1.2rem; font-weight: 600; margin-block-end: 16px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 10px; border-radius: 8px; box-sizing: border-box;" value="${item.title.replace(/"/g, '&quot;')}" />
+        
+        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Color Hex Code</label>
+        <input type="text" id="edit-detail-content" class="edit-input" style="inline-size: 100%; font-size: 1rem; font-family: monospace; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 10px; border-radius: 8px; box-sizing: border-box;" value="${item.content.raw_text}" />
+      </div>
+    `;
+  }
+  else if (item.type === 'article') {
+    contentContainer.innerHTML = `
+      <div class="detail-content">
+        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Article Title</label>
+        <input type="text" id="edit-detail-title" class="edit-input" style="inline-size: 100%; font-size: 1.2rem; font-weight: 600; margin-block-end: 16px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 10px; border-radius: 8px; box-sizing: border-box;" value="${item.title.replace(/"/g, '&quot;')}" />
+        
+        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Article URL</label>
+        <input type="text" id="edit-detail-url" class="edit-input" style="inline-size: 100%; font-size: 0.9rem; margin-block-end: 16px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 10px; border-radius: 8px; box-sizing: border-box;" value="${item.url || ''}" />
+        
+        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Description / Parsed Text</label>
+        <textarea id="edit-detail-content" class="edit-textarea" style="inline-size: 100%; block-size: 180px; font-size: 0.95rem; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 12px; border-radius: 8px; resize: vertical; box-sizing: border-box;">${item.content.raw_text || ''}</textarea>
+      </div>
+    `;
+  }
+  else { // note
+    contentContainer.innerHTML = `
+      <div class="detail-content">
+        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Note Title</label>
+        <input type="text" id="edit-detail-title" class="edit-input" style="inline-size: 100%; font-size: 1.5rem; font-weight: 700; margin-block-end: 16px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 10px; border-radius: 8px; box-sizing: border-box;" value="${item.title.replace(/"/g, '&quot;')}" />
+        
+        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Content</label>
+        <textarea id="edit-detail-content" class="edit-textarea" style="inline-size: 100%; block-size: 250px; font-family: inherit; font-size: 1rem; line-height: 1.5; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 12px; border-radius: 8px; resize: vertical; box-sizing: border-box; white-space: pre-wrap;">${item.content.raw_text}</textarea>
+      </div>
+    `;
+  }
+}
+
+async function saveDetailEdits() {
+  const item = currentDetailItem;
+  if (!item) return;
+
+  const editTitleVal = document.getElementById('edit-detail-title')?.value.trim();
+  const editContentVal = document.getElementById('edit-detail-content')?.value.trim();
+
+  if (!editTitleVal && !editContentVal) {
+    showToast('Cannot save empty changes.');
+    return;
+  }
+
+  // Update item object properties
+  if (editTitleVal !== undefined) {
+    item.title = editTitleVal;
+  }
+  if (editContentVal !== undefined) {
+    item.content.raw_text = editContentVal;
+    item.content.word_count = editContentVal.split(/\s+/).length;
+    item.content.reading_time_mins = Math.max(1, Math.ceil(item.content.word_count / 200));
+  }
+
+  // Special properties per type
+  if (item.type === 'article') {
+    const editUrlVal = document.getElementById('edit-detail-url')?.value.trim();
+    if (editUrlVal !== undefined) {
+      item.url = editUrlVal;
+    }
+  }
+
+  showToast('Saving changes to Google Drive...');
+  setSyncStatus('syncing', 'Saving edits...');
+
+  try {
+    // 1. Upload updated content to Google Drive
+    await uploadFileContent(item._drive_file_id, item);
+
+    // 2. Update local files cache
+    const idx = driveFiles.findIndex(el => el.id === item.id);
+    if (idx !== -1) {
+      driveFiles[idx] = item;
+    }
+
+    setSyncStatus('synced', 'Synced');
+    showToast('Changes saved!');
+    
+    // 3. Reset edit state and re-show the modal in view mode
+    isEditingDetail = false;
+    showDetailModal(item);
+    renderGrid();
+  } catch (err) {
+    console.error('Failed to save edit details:', err);
+    showToast('Failed to save changes to Google Drive.');
+    setSyncStatus('synced', 'Sync Failed');
+  }
 }
 
 // --- Configuration Management ---
