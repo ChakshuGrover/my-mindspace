@@ -1196,13 +1196,44 @@ html {
   display: none;
 }
 
+/* Sidebar Overlay Styling (defaults to hidden on desktop) */
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 99;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.sidebar-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 @media (max-width: 1024px) {
   .app-container {
     grid-template-columns: 1fr;
   }
   
   .sidebar {
-    display: none;
+    position: fixed;
+    top: 0;
+    left: -290px; /* Hidden offscreen by default on mobile */
+    width: 280px;
+    height: 100vh;
+    z-index: 100;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.3);
+    border-inline-end: 1px solid var(--border-glass-hover);
+    display: flex; /* Ensure display is flex overriding display: none */
+  }
+
+  .sidebar.open {
+    transform: translateX(290px); /* Slide in drawer */
   }
 
   .mobile-header {
