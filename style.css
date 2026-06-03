@@ -602,15 +602,15 @@ html {
 }
 
 .mind-masonry {
-  columns: 4 280px;
-  column-gap: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
   inline-size: 100%;
   margin: 0 auto;
 }
 
 /* --- Visual Card Styling --- */
 .mind-card {
-  break-inside: avoid;
   display: flex;
   flex-direction: column;
   height: 250px;
@@ -1242,6 +1242,12 @@ html {
 @media (max-width: 1024px) {
   .app-container {
     grid-template-columns: 1fr;
+  }
+  
+  .mind-masonry {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
   }
   
   .sidebar {
