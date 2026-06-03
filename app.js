@@ -37,6 +37,38 @@ const STORAGE_KEYS = {
   ACCESS_TOKEN: 'mymind_access_token'
 };
 
+// --- Local Cache Helpers ---
+function loadCachedData() {
+  try {
+    const cachedFolders = safeStorage.getItem('mymind_cached_folders');
+    if (cachedFolders) {
+      folders = JSON.parse(cachedFolders);
+    }
+    const cachedFiles = safeStorage.getItem('mymind_cached_files');
+    if (cachedFiles) {
+      driveFiles = JSON.parse(cachedFiles);
+    }
+  } catch (e) {
+    console.error('Error loading cached data:', e);
+  }
+}
+
+function saveFilesCache() {
+  try {
+    safeStorage.setItem('mymind_cached_files', JSON.stringify(driveFiles));
+  } catch (e) {
+    console.error('Failed to save files cache:', e);
+  }
+}
+
+function saveFoldersCache() {
+  try {
+    safeStorage.setItem('mymind_cached_folders', JSON.stringify(folders));
+  } catch (e) {
+    console.error('Failed to save folders cache:', e);
+  }
+}
+
 // --- Initializing UI Elements ---
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initApp);
@@ -307,6 +339,11 @@ function closeAllModals() {
 
 // --- Google Drive API Integration ---
 async function verifyAndFetchData() {
+  // Load cached files & folders immediately to avoid blank screens
+  loadCachedData();
+  renderGrid();
+  renderSidebarFolders();
+
   setSyncStatus('syncing', 'Connecting Profile...');
   
   try {
@@ -333,13 +370,11 @@ async function verifyAndFetchData() {
 
     showAppPage();
 
-    // 2. Fetch or Create folders.json File
-    await loadFolders();
+    // Start background sync without blocking the UI
+    loadFolders().then(() => {
+      loadMindItems();
+    });
 
-    // 3. Fetch all Mind Items inside the appDataFolder
-    await loadMindItems();
-
-    // 4. Check for query parameters (?add=)
     handleShareQueryParams();
 
   } catch (err) {
@@ -353,19 +388,27 @@ async function loadFolders() {
   setSyncStatus('syncing', 'Loading Folders...');
   try {
     // Search folders.json in appDataFolder
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='folders.json' and mimeType='application/json'&fields=files(id, name)`, {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='folders.json' and mimeType='application/json'&fields=files(id, name, modifiedTime)`, {
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
     const data = await res.json();
     
     if (data.files && data.files.length > 0) {
-      // folders.json exists, download content
-      const fileId = data.files[0].id;
-      const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-      folders = await contentRes.json();
-      safeStorage.setItem('folders_file_id', fileId);
+      const file = data.files[0];
+      const cachedFoldersTime = safeStorage.getItem('folders_modified_time');
+      
+      // If folders.json modifiedTime matches our cache, use cached folders
+      if (cachedFoldersTime === file.modifiedTime && folders && folders.length > 0) {
+        console.log('Folders cache is up-to-date.');
+      } else {
+        const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        folders = await contentRes.json();
+        saveFoldersCache();
+        safeStorage.setItem('folders_modified_time', file.modifiedTime);
+      }
+      safeStorage.setItem('folders_file_id', file.id);
     } else {
       // Create a folders.json file
       console.log('folders.json not found, creating new one...');
@@ -387,6 +430,7 @@ async function loadFolders() {
       
       // Upload empty list content
       await uploadFileContent(newFile.id, []);
+      saveFoldersCache();
     }
     
     renderSidebarFolders();
@@ -399,29 +443,42 @@ async function loadMindItems() {
   setSyncStatus('syncing', 'Syncing your Mind...');
   try {
     // List all application/json files inside appDataFolder except folders.json
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name != 'folders.json' and mimeType='application/json' and trashed=false&fields=files(id, name)&pageSize=100`, {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name != 'folders.json' and mimeType='application/json' and trashed=false&fields=files(id, name, modifiedTime)&pageSize=100`, {
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
     const data = await res.json();
     
-    driveFiles = [];
-    
     if (data.files && data.files.length > 0) {
-      // Download contents of each JSON file in parallel
-      const fetchPromises = data.files.map(async (file) => {
+      const remoteFiles = data.files || [];
+      const remoteFileIds = new Set(remoteFiles.map(f => f.id));
+      
+      // Filter out cached files that are no longer present on Google Drive (deleted)
+      const existingCache = driveFiles.filter(item => remoteFileIds.has(item._drive_file_id));
+      
+      // Download or resolve contents of each JSON file in parallel
+      const fetchPromises = remoteFiles.map(async (file) => {
+        // Look for a cached item with matching ID and modified time
+        const cached = existingCache.find(item => item._drive_file_id === file.id);
+        if (cached && cached._drive_modified_time === file.modifiedTime) {
+          return cached; // Return cached item directly (0 network cost!)
+        }
+        
+        // Otherwise fetch the updated/new content from Drive
         try {
           const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
             headers: { 'Authorization': `Bearer ${accessToken}` }
           });
           const item = await contentRes.json();
-          item._drive_file_id = file.id; // Keep tracking the Google Drive File ID
+          item._drive_file_id = file.id;
+          item._drive_modified_time = file.modifiedTime;
           if (item.type === 'color' || item.type === 'quote') {
             item.type = 'note';
           }
           return item;
         } catch (e) {
           console.error(`Error loading file content for ${file.name}:`, e);
-          return null;
+          // If fetch fails but we have a cached copy, keep the cached copy as fallback
+          return cached || null;
         }
       });
       
@@ -430,6 +487,12 @@ async function loadMindItems() {
       
       // Sort drive files by creation date (newest first)
       driveFiles.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      
+      // Update local storage cache
+      saveFilesCache();
+    } else {
+      driveFiles = [];
+      saveFilesCache();
     }
     
     setSyncStatus('synced', 'Synced');
@@ -487,6 +550,7 @@ async function saveNewFolder() {
   try {
     const foldersFileId = safeStorage.getItem('folders_file_id');
     await uploadFileContent(foldersFileId, folders);
+    saveFoldersCache();
     renderSidebarFolders();
     showToast(`Created folder "${name}"`);
     setSyncStatus('synced', 'Synced');
@@ -847,6 +911,7 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo =
     } else {
       driveFiles.unshift(newItem);
     }
+    saveFilesCache();
 
     showToast('Saved to your Mind!');
     setSyncStatus('synced', 'Synced');
@@ -913,11 +978,13 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo =
       } else {
         driveFiles.unshift(newItem);
       }
+      saveFilesCache();
       setSyncStatus('synced', 'Synced');
     } catch (saveErr) {
       console.error('Fallback save failed:', saveErr);
       // Remove placeholder entirely if both failed
       driveFiles = driveFiles.filter(item => item.id !== placeholderId);
+      saveFilesCache();
       showToast('Failed to save to Google Drive.');
       setSyncStatus('synced', 'Sync Failed');
     }
@@ -943,6 +1010,7 @@ async function deleteItem(itemId, driveFileId) {
 
     // Remove locally
     driveFiles = driveFiles.filter(item => item.id !== itemId);
+    saveFilesCache();
     
     showToast('Forgotten.');
     setSyncStatus('synced', 'Synced');
@@ -1091,6 +1159,7 @@ function renderGrid() {
           setSyncStatus('syncing', 'Updating task...');
           try {
             await uploadFileContent(item._drive_file_id, item);
+            saveFilesCache();
             setSyncStatus('synced', 'Synced');
           } catch (err) {
             console.error('Failed to update task state on Drive:', err);
@@ -1192,6 +1261,7 @@ function showDetailModal(item) {
         setSyncStatus('syncing', 'Updating task...');
         try {
           await uploadFileContent(item._drive_file_id, item);
+          saveFilesCache();
           setSyncStatus('synced', 'Synced');
           renderGrid(); // Sync grid card state
         } catch (err) {
@@ -1420,6 +1490,7 @@ async function saveDetailEdits() {
     if (idx !== -1) {
       driveFiles[idx] = item;
     }
+    saveFilesCache();
 
     setSyncStatus('synced', 'Synced');
     showToast('Changes saved!');
