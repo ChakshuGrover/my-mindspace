@@ -23,6 +23,7 @@ let googleUserId = null;
 let settingsFileId = null;
 let syncIntervalId = null;
 let lastSyncTime = 0;
+let onAuthSuccessCallback = null;
 let driveFiles = []; // Array of downloaded mind items
 let folders = []; // Array of virtual folders
 let currentFilter = 'all'; // 'all', 'type-quote', 'folder-ID', etc.
@@ -171,12 +172,22 @@ function initGoogleIdentityClient() {
       callback: (tokenResponse) => {
         if (tokenResponse.error !== undefined) {
           console.error('Oauth authorization error:', tokenResponse.error);
-          showToast('Failed to connect to Google Drive.');
+          showToast('Authentication failed or expired.');
+          logout();
           return;
         }
         accessToken = tokenResponse.access_token;
+        const expiresAt = Date.now() + (tokenResponse.expires_in || 3600) * 1000;
         safeStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
-        verifyAndFetchData();
+        safeStorage.setItem('mymind_token_expires_at', expiresAt);
+        
+        if (onAuthSuccessCallback) {
+          const cb = onAuthSuccessCallback;
+          onAuthSuccessCallback = null;
+          cb();
+        } else {
+          verifyAndFetchData();
+        }
       }
     });
     console.log('Google Identity Client Initialized');
@@ -185,7 +196,9 @@ function initGoogleIdentityClient() {
     const savedToken = safeStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
     if (savedToken) {
       accessToken = savedToken;
-      verifyAndFetchData();
+      ensureValidToken(() => {
+        verifyAndFetchData();
+      });
     } else {
       showLandingPage();
     }
@@ -1874,12 +1887,12 @@ function showToast(message) {
 
 async function refreshData() {
   showToast('Refreshing your MindSpace...');
-  try {
-    await verifyAndFetchData();
-  } catch (err) {
-    console.error('Failed to refresh data:', err);
-    showToast('Failed to sync. Please try again.');
-  }
+  ensureValidToken(() => {
+    verifyAndFetchData().catch(err => {
+      console.error('Failed to refresh data:', err);
+      showToast('Failed to sync. Please try again.');
+    });
+  });
 }
 
 // --- Automatic Sync Engine (Real-time Focus & Periodic Polling) ---
@@ -1896,23 +1909,26 @@ function triggerBackgroundSync() {
   
   lastSyncTime = now;
   console.log('Running automatic background sync...');
-  setSyncStatus('syncing', 'Checking for updates...');
   
-  // Fetch folders and mind items in parallel
-  loadFolders().then(() => {
-    Promise.all([
-      loadSettingsFromDrive(),
-      loadMindItems()
-    ]).then(() => {
-      console.log('Background sync completed.');
-      setSyncStatus('synced', 'Synced');
+  ensureValidToken(() => {
+    setSyncStatus('syncing', 'Checking for updates...');
+    
+    // Fetch folders and mind items in parallel
+    loadFolders().then(() => {
+      Promise.all([
+        loadSettingsFromDrive(),
+        loadMindItems()
+      ]).then(() => {
+        console.log('Background sync completed.');
+        setSyncStatus('synced', 'Synced');
+      }).catch(err => {
+        console.error('Background sync failed:', err);
+        setSyncStatus('synced', 'Sync Failed');
+      });
     }).catch(err => {
-      console.error('Background sync failed:', err);
+      console.error('Background sync folder load failed:', err);
       setSyncStatus('synced', 'Sync Failed');
     });
-  }).catch(err => {
-    console.error('Background sync folder load failed:', err);
-    setSyncStatus('synced', 'Sync Failed');
   });
 }
 
@@ -1939,6 +1955,31 @@ function startAutoSyncLoop() {
       triggerBackgroundSync();
     }
   });
+}
+
+// --- Token Lifecycle Refresh Helper ---
+function ensureValidToken(callback) {
+  const expiresAt = parseInt(safeStorage.getItem('mymind_token_expires_at') || '0', 10);
+  
+  // If no token exists, or it expires within the next 5 minutes, request a silent refresh
+  if (!accessToken || Date.now() + 300000 > expiresAt) {
+    console.log('Google Access Token is expired or expiring soon. Performing silent refresh...');
+    onAuthSuccessCallback = callback;
+    
+    if (tokenClient) {
+      const email = userEmail || safeStorage.getItem('mymind_user_email');
+      tokenClient.requestAccessToken({
+        prompt: 'none',
+        hint: email || undefined
+      });
+    } else {
+      console.warn('Token client not initialized, forcing logout.');
+      logout();
+    }
+  } else {
+    // Token is still valid, execute callback immediately
+    callback();
+  }
 }
 
 
