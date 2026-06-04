@@ -238,6 +238,20 @@ function setupEventListeners() {
   document.getElementById('btn-close-detail-modal').addEventListener('click', () => closeModal('detail-modal'));
   document.getElementById('detail-modal-backdrop').addEventListener('click', () => closeModal('detail-modal'));
 
+  const addFolderSelect = document.getElementById('add-folder-select');
+  if (addFolderSelect) {
+    addFolderSelect.addEventListener('change', (e) => {
+      const container = document.getElementById('add-new-folder-input-container');
+      if (e.target.value === '__NEW_FOLDER__') {
+        container.style.display = 'flex';
+        document.getElementById('add-new-folder-name').focus();
+      } else {
+        container.style.display = 'none';
+        document.getElementById('add-new-folder-name').value = '';
+      }
+    });
+  }
+
   // Save actions
   document.getElementById('btn-save-settings').addEventListener('click', saveSettings);
   document.getElementById('btn-save-folder').addEventListener('click', saveNewFolder);
@@ -300,6 +314,13 @@ function openModal(modalId) {
   if (modalId === 'add-modal') {
     document.getElementById('add-input').focus();
     populateFolderSelect();
+    // Reset inline folder fields
+    const folderSelect = document.getElementById('add-folder-select');
+    if (folderSelect) folderSelect.value = '';
+    const newFolderContainer = document.getElementById('add-new-folder-input-container');
+    if (newFolderContainer) newFolderContainer.style.display = 'none';
+    const newFolderNameInput = document.getElementById('add-new-folder-name');
+    if (newFolderNameInput) newFolderNameInput.value = '';
   } else if (modalId === 'folder-modal') {
     document.getElementById('folder-name-input').focus();
   }
@@ -609,6 +630,11 @@ function populateFolderSelect() {
     opt.textContent = `${folder.emoji} ${folder.name}`;
     select.appendChild(opt);
   });
+
+  const newFolderOpt = document.createElement('option');
+  newFolderOpt.value = '__NEW_FOLDER__';
+  newFolderOpt.textContent = '➕ Create new folder...';
+  select.appendChild(newFolderOpt);
 }
 
 // --- AI Analysis Parser (Gemma 4 31B and Gemini 3.1 Flash Lite) ---
@@ -751,9 +777,10 @@ async function saveNewItem() {
   const addInput = document.getElementById('add-input');
   const folderSelect = document.getElementById('add-folder-select');
   const todoToggle = document.getElementById('add-todo-toggle');
+  const newFolderInput = document.getElementById('add-new-folder-name');
   
   const rawInputText = addInput.value.trim();
-  const folderId = folderSelect.value;
+  let folderId = folderSelect.value;
   const isTodo = todoToggle ? todoToggle.checked : false;
 
   if (!rawInputText) {
@@ -761,9 +788,42 @@ async function saveNewItem() {
     return;
   }
 
+  // Handle creating new folder inline
+  if (folderId === '__NEW_FOLDER__') {
+    const newFolderName = newFolderInput ? newFolderInput.value.trim() : '';
+    if (!newFolderName) {
+      showToast('New folder name cannot be empty.');
+      return;
+    }
+    
+    // Create new folder object locally
+    const newFolderId = 'folder-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+    const newFolder = {
+      id: newFolderId,
+      name: newFolderName,
+      emoji: '📁',
+      color: '#a855f7', // Default soft purple
+      created_at: new Date().toISOString()
+    };
+    
+    folders.push(newFolder);
+    saveFoldersCache();
+    renderSidebarFolders();
+    
+    // Sync folder in background
+    uploadFileContent(safeStorage.getItem('folders_file_id'), folders).then(() => {
+      console.log(`Inline folder "${newFolderName}" synced to Drive.`);
+    }).catch(err => {
+      console.error('Failed to sync inline folder to Google Drive:', err);
+    });
+
+    folderId = newFolderId; // Use the new folder for the item
+  }
+
   // Close modal and reset input immediately!
   addInput.value = '';
   if (todoToggle) todoToggle.checked = false;
+  if (newFolderInput) newFolderInput.value = '';
   closeModal('add-modal');
   showToast('Adding to your Mind...');
 

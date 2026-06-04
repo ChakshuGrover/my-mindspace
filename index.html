@@ -245,6 +245,13 @@
               <!-- Dynamic options -->
             </select>
           </label>
+
+          <!-- Hidden new folder input field -->
+          <div id="add-new-folder-input-container" style="display: none; flex-direction: column; gap: 6px; margin-inline-start: 12px; border-inline-start: 2px solid var(--accent-purple); padding-inline-start: 12px; transition: var(--transition-fast);">
+            <span style="font-size: 0.85rem; color: var(--text-secondary);">New folder name:</span>
+            <input type="text" id="add-new-folder-name" placeholder="Type folder name..." style="background: var(--bg-glass-active); border: 1px solid var(--border-glass); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.95rem; color: #fff; width: 100%;" />
+          </div>
+
           <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text-secondary); font-size: 0.95rem;">
             <input type="checkbox" id="add-todo-toggle" style="transform: scale(1.1);" />
             <span>☑️ Create as To-Do list (one task per line)</span>
