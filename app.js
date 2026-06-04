@@ -1805,13 +1805,13 @@ function showDetailModal(item) {
         <h2 class="detail-title">${item.title}</h2>
         
         <div class="detail-summary-box">
-          <div class="detail-summary-title">AI Abstract Summary</div>
+          <div class="detail-summary-title">Abstract Summary</div>
           <p>${item.ai_analysis.summary}</p>
         </div>
 
         ${item.ai_analysis.detailed_summary ? `
           <div class="detail-summary-box" style="margin-block-start: 16px;">
-            <div class="detail-summary-title">AI Detailed Summary</div>
+            <div class="detail-summary-title">Detailed Summary</div>
             <p>${item.ai_analysis.detailed_summary}</p>
           </div>
         ` : ''}
@@ -1846,7 +1846,7 @@ function showDetailModal(item) {
         
         ${item.ai_analysis.detailed_summary ? `
           <div class="detail-summary-box" style="margin-block-end: 20px;">
-            <div class="detail-summary-title">AI Detailed Summary</div>
+            <div class="detail-summary-title">Detailed Summary</div>
             <p>${item.ai_analysis.detailed_summary}</p>
           </div>
         ` : ''}
