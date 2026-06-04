@@ -8,3 +8,4 @@ venv/
 .npm-cache/
 package.json
 package-lock.json
+.env*

@@ -867,7 +867,34 @@ function cleanAndParseJSON(rawText) {
   if (cleaned.startsWith('```')) {
     cleaned = cleaned.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '').trim();
   }
-  return JSON.parse(cleaned);
+  
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    const firstBrace = cleaned.indexOf('{');
+    const firstBracket = cleaned.indexOf('[');
+    
+    let startIdx = -1;
+    let endIdx = -1;
+    
+    if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+      startIdx = firstBrace;
+      endIdx = cleaned.lastIndexOf('}');
+    } else if (firstBracket !== -1) {
+      startIdx = firstBracket;
+      endIdx = cleaned.lastIndexOf(']');
+    }
+    
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      try {
+        const jsonSub = cleaned.substring(startIdx, endIdx + 1);
+        return JSON.parse(jsonSub);
+      } catch (innerErr) {
+        // Fall back to original error
+      }
+    }
+    throw e;
+  }
 }
 
 function resetAISearch() {
@@ -919,7 +946,8 @@ async function executeAISearch(query) {
     created_at: item.created_at || '',
     summary: item.ai_analysis?.summary || '',
     tags: item.ai_analysis?.tags || [],
-    vibe: item.ai_analysis?.vibe || ''
+    vibe: item.ai_analysis?.vibe || '',
+    content: (item.content?.raw_text || '').substring(0, 300)
   }));
 
   const systemInstruction = `
