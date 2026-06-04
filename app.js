@@ -783,11 +783,6 @@ async function saveNewItem() {
   let folderId = folderSelect.value;
   const isTodo = todoToggle ? todoToggle.checked : false;
 
-  if (!rawInputText) {
-    showToast('Input cannot be empty.');
-    return;
-  }
-
   // Handle creating new folder inline
   if (folderId === '__NEW_FOLDER__') {
     const newFolderName = newFolderInput ? newFolderInput.value.trim() : '';
@@ -818,6 +813,19 @@ async function saveNewItem() {
     });
 
     folderId = newFolderId; // Use the new folder for the item
+
+    // If note text input is empty, just create the folder and return
+    if (!rawInputText) {
+      if (newFolderInput) newFolderInput.value = '';
+      closeModal('add-modal');
+      showToast(`Created folder "${newFolderName}"`);
+      return;
+    }
+  }
+
+  if (!rawInputText) {
+    showToast('Input cannot be empty.');
+    return;
   }
 
   // Close modal and reset input immediately!
