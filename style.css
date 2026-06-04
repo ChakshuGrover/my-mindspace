@@ -646,6 +646,45 @@ html {
   border-radius: var(--radius-sm);
 }
 
+.search-loader-indicator {
+  position: absolute;
+  inset-inline-end: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-purple);
+  pointer-events: none;
+}
+
+.search-container.ai-searching #search-input {
+  border-color: var(--accent-purple);
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.35);
+  background-color: rgba(18, 16, 22, 0.85);
+  animation: searchGlowPulse 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes searchGlowPulse {
+  0% {
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.15);
+    border-color: rgba(168, 85, 247, 0.5);
+  }
+  100% {
+    box-shadow: 0 0 25px rgba(168, 85, 247, 0.6);
+    border-color: rgba(168, 85, 247, 1);
+  }
+}
+
+.search-container.ai-searching .search-shortcuts {
+  display: none;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* --- Masonry Canvas layout (Modern Multi-column) --- */
 .canvas-container {
   flex: 1;

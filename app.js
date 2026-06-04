@@ -28,6 +28,8 @@ let driveFiles = []; // Array of downloaded mind items
 let folders = []; // Array of virtual folders
 let currentFilter = 'all'; // 'all', 'type-quote', 'folder-ID', etc.
 let searchTimeout = null;
+let aiFilteredIds = null;
+let aiSearchAbortController = null;
 let currentDetailItem = null;
 let isEditingDetail = false;
 
@@ -239,8 +241,9 @@ function setupEventListeners() {
           const input = document.getElementById('search-input');
           if (input && input.value !== '') {
             input.value = '';
-            renderGrid();
           }
+          resetAISearch();
+          renderGrid();
         }
       }
     });
@@ -312,10 +315,24 @@ function setupEventListeners() {
 
   // Search filter typing
   document.getElementById('search-input').addEventListener('input', (e) => {
+    const query = e.target.value.trim();
     clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
+    
+    if (!query) {
+      resetAISearch();
       renderGrid();
-    }, 150);
+      return;
+    }
+
+    // Visual feedback: show thinking indicator
+    const container = document.querySelector('.search-container');
+    if (container) container.classList.add('ai-searching');
+    const loader = document.getElementById('search-loader');
+    if (loader) loader.removeAttribute('hidden');
+
+    searchTimeout = setTimeout(() => {
+      executeAISearch(query);
+    }, 600);
   });
 
   // Hotkey commands (⌘K or Ctrl+K for search, Esc to close modals)
@@ -853,6 +870,145 @@ function cleanAndParseJSON(rawText) {
   return JSON.parse(cleaned);
 }
 
+function resetAISearch() {
+  aiFilteredIds = null;
+  if (aiSearchAbortController) {
+    aiSearchAbortController.abort();
+    aiSearchAbortController = null;
+  }
+  const container = document.querySelector('.search-container');
+  if (container) container.classList.remove('ai-searching');
+  const loader = document.getElementById('search-loader');
+  if (loader) loader.setAttribute('hidden', 'true');
+}
+
+async function executeAISearch(query) {
+  if (aiSearchAbortController) {
+    aiSearchAbortController.abort();
+  }
+  aiSearchAbortController = new AbortController();
+  const { signal } = aiSearchAbortController;
+
+  let apiKey = safeStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '';
+  const email = userEmail || safeStorage.getItem('mymind_user_email');
+  const isChakshu = email === 'chakshu.grover8@gmail.com';
+
+  if (!apiKey && !isChakshu) {
+    showToast('AI search requires a Gemini API Key. Please add one in Settings. Falling back to keyword search.');
+    aiFilteredIds = null;
+    const container = document.querySelector('.search-container');
+    if (container) container.classList.remove('ai-searching');
+    const loader = document.getElementById('search-loader');
+    if (loader) loader.setAttribute('hidden', 'true');
+    renderGrid();
+    return;
+  }
+
+  const model = safeStorage.getItem(STORAGE_KEYS.AI_MODEL) || 'gemma-4-31b-it';
+  const loadedFiles = driveFiles.filter(item => !item.isPlaceholder);
+  if (loadedFiles.length === 0) {
+    aiFilteredIds = [];
+    renderGrid();
+    return;
+  }
+
+  const notesIndex = loadedFiles.map(item => ({
+    id: item.id,
+    title: item.title || 'Untitled',
+    type: item.type || 'note',
+    created_at: item.created_at || '',
+    summary: item.ai_analysis?.summary || '',
+    tags: item.ai_analysis?.tags || [],
+    vibe: item.ai_analysis?.vibe || ''
+  }));
+
+  const systemInstruction = `
+    You are a highly advanced AI search engine running inside "MyMindSpace", a personal canvas for notes, articles/links, to-dos, and colors.
+    Your task is to match the user's natural language search query against their stored items.
+    
+    Today's Date and Time is: ${new Date().toString()}.
+    User Search Query: "${query}"
+    
+    Rules for matching:
+    1. Understand conceptual connections: e.g., "claude" matches "anthropic", "llm", "ai model".
+    2. Understand relative time queries: compare phrases like "last week", "yesterday", "three days ago" to the "created_at" timestamps.
+    3. Understand item type queries: if the query specifies "articles", "notes", "todos", or "colors", restrict your top matches to those types.
+    4. If the query is a simple color description (e.g. "blue color", "calming tones"), match relevant vibes or color tags.
+    5. Return a ranked list of matches, ordered from most relevant to least relevant.
+    
+    Below is the JSON list of stored items:
+    ${JSON.stringify(notesIndex)}
+    
+    CRITICAL: Respond STRICTLY in a JSON array of matching item IDs. Example format:
+    ["item-12345-abcde", "item-67890-fghij"]
+    Do not output markdown codeblocks, explanations, or any other content. Only output the JSON array.
+  `;
+
+  try {
+    const endpoint = `/api/gemini?model=${model}&key=${apiKey}`;
+    const payload = {
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: systemInstruction }]
+        }
+      ]
+    };
+    
+    if (!model.includes('gemma')) {
+      payload.generationConfig = {
+        responseMimeType: 'application/json'
+      };
+    }
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal
+    });
+
+    if (!response.ok) throw new Error('Gemini API search request failed');
+
+    const responseData = await response.json();
+    const parts = responseData.candidates?.[0]?.content?.parts || [];
+    const textPart = parts.find(p => !p.thought) || parts[0] || { text: '' };
+    const rawText = textPart.text || '';
+    
+    let parsedIDs = [];
+    try {
+      parsedIDs = cleanAndParseJSON(rawText);
+      if (!Array.isArray(parsedIDs)) {
+        parsedIDs = [];
+      }
+    } catch (e) {
+      console.error('Failed to parse AI search results:', e, rawText);
+    }
+
+    aiFilteredIds = parsedIDs;
+
+    const container = document.querySelector('.search-container');
+    if (container) container.classList.remove('ai-searching');
+    const loader = document.getElementById('search-loader');
+    if (loader) loader.setAttribute('hidden', 'true');
+
+    renderGrid();
+
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      console.log('Search aborted due to new input');
+      return;
+    }
+    console.error('AI search failed:', err);
+    aiFilteredIds = null;
+    const container = document.querySelector('.search-container');
+    if (container) container.classList.remove('ai-searching');
+    const loader = document.getElementById('search-loader');
+    if (loader) loader.setAttribute('hidden', 'true');
+    renderGrid();
+  }
+}
+
 // Fallback Mock Local Parser in case API key is missing
 function mockAnalysis(inputText) {
   let type = 'note';
@@ -1234,29 +1390,44 @@ function renderGrid() {
   const query = document.getElementById('search-input').value.trim().toLowerCase();
   
   // Filter items based on current view/folder and search text
-  const filteredItems = driveFiles.filter(item => {
-    // 1. Filter by navigation view
-    if (currentFilter.startsWith('folder-')) {
-      const folderId = currentFilter.substring(7);
-      if (!item.folders || !item.folders.includes(folderId)) return false;
-    } else if (currentFilter === 'type-article' && item.type !== 'article') return false;
-    else if (currentFilter === 'type-note' && item.type !== 'note') return false;
-    else if (currentFilter === 'type-todo' && item.type !== 'todo') return false;
+  let filteredItems;
+  if (query && aiFilteredIds !== null) {
+    filteredItems = aiFilteredIds
+      .map(id => driveFiles.find(item => item.id === id))
+      .filter(Boolean);
+      
+    filteredItems = filteredItems.filter(item => {
+      if (currentFilter.startsWith('folder-')) {
+        const folderId = currentFilter.substring(7);
+        if (!item.folders || !item.folders.includes(folderId)) return false;
+      } else if (currentFilter === 'type-article' && item.type !== 'article') return false;
+      else if (currentFilter === 'type-note' && item.type !== 'note') return false;
+      else if (currentFilter === 'type-todo' && item.type !== 'todo') return false;
+      return true;
+    });
+  } else {
+    filteredItems = driveFiles.filter(item => {
+      if (currentFilter.startsWith('folder-')) {
+        const folderId = currentFilter.substring(7);
+        if (!item.folders || !item.folders.includes(folderId)) return false;
+      } else if (currentFilter === 'type-article' && item.type !== 'article') return false;
+      else if (currentFilter === 'type-note' && item.type !== 'note') return false;
+      else if (currentFilter === 'type-todo' && item.type !== 'todo') return false;
 
-    // 2. Filter by search query
-    if (query) {
-      const searchInTitle = item.title ? item.title.toLowerCase().includes(query) : false;
-      const searchInText = item.content && item.content.raw_text ? item.content.raw_text.toLowerCase().includes(query) : false;
-      const searchInSummary = item.ai_analysis && item.ai_analysis.summary ? item.ai_analysis.summary.toLowerCase().includes(query) : false;
-      const searchInVibe = item.ai_analysis && item.ai_analysis.vibe ? item.ai_analysis.vibe.toLowerCase().includes(query) : false;
-      const searchInTags = item.ai_analysis && item.ai_analysis.tags ? item.ai_analysis.tags.some(tag => tag.toLowerCase().includes(query)) : false;
-      const searchInType = item.type.toLowerCase() === query;
+      if (query) {
+        const searchInTitle = item.title ? item.title.toLowerCase().includes(query) : false;
+        const searchInText = item.content && item.content.raw_text ? item.content.raw_text.toLowerCase().includes(query) : false;
+        const searchInSummary = item.ai_analysis && item.ai_analysis.summary ? item.ai_analysis.summary.toLowerCase().includes(query) : false;
+        const searchInVibe = item.ai_analysis && item.ai_analysis.vibe ? item.ai_analysis.vibe.toLowerCase().includes(query) : false;
+        const searchInTags = item.ai_analysis && item.ai_analysis.tags ? item.ai_analysis.tags.some(tag => tag.toLowerCase().includes(query)) : false;
+        const searchInType = item.type.toLowerCase() === query;
 
-      return searchInTitle || searchInText || searchInSummary || searchInVibe || searchInTags || searchInType;
-    }
+        return searchInTitle || searchInText || searchInSummary || searchInVibe || searchInTags || searchInType;
+      }
 
-    return true;
-  });
+      return true;
+    });
+  }
 
   if (filteredItems.length === 0) {
     emptyState.removeAttribute('hidden');
