@@ -181,6 +181,8 @@ function initGoogleIdentityClient() {
         safeStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
         safeStorage.setItem('mymind_token_expires_at', expiresAt);
         
+        hideSessionExpiredBanner();
+        
         if (onAuthSuccessCallback) {
           const cb = onAuthSuccessCallback;
           onAuthSuccessCallback = null;
@@ -198,7 +200,7 @@ function initGoogleIdentityClient() {
       accessToken = savedToken;
       ensureValidToken(() => {
         verifyAndFetchData();
-      });
+      }, true); // force landing page redirect if expired on startup
     } else {
       showLandingPage();
     }
@@ -268,6 +270,17 @@ function setupEventListeners() {
       } else {
         container.style.display = 'none';
         document.getElementById('add-new-folder-name').value = '';
+      }
+    });
+  }
+
+  const btnReconnect = document.getElementById('btn-reconnect');
+  if (btnReconnect) {
+    btnReconnect.addEventListener('click', () => {
+      if (tokenClient) {
+        tokenClient.requestAccessToken();
+      } else {
+        showToast('Google identity client not initialized. Please refresh.');
       }
     });
   }
@@ -1958,27 +1971,38 @@ function startAutoSyncLoop() {
 }
 
 // --- Token Lifecycle Refresh Helper ---
-function ensureValidToken(callback) {
+function ensureValidToken(callback, forceLandingPageOnExpiry = false) {
   const expiresAt = parseInt(safeStorage.getItem('mymind_token_expires_at') || '0', 10);
   
-  // If no token exists, or it expires within the next 5 minutes, request a silent refresh
+  // If no token exists, or it expires within the next 5 minutes, trigger re-authentication
   if (!accessToken || Date.now() + 300000 > expiresAt) {
-    console.log('Google Access Token is expired or expiring soon. Performing silent refresh...');
-    onAuthSuccessCallback = callback;
+    console.log('Google Access Token is expired or expiring soon.');
     
-    if (tokenClient) {
-      const email = userEmail || safeStorage.getItem('mymind_user_email');
-      tokenClient.requestAccessToken({
-        prompt: 'none',
-        hint: email || undefined
-      });
-    } else {
-      console.warn('Token client not initialized, forcing logout.');
+    if (forceLandingPageOnExpiry) {
+      console.log('Token expired on startup. Redirecting to landing page for manual sign-in.');
       logout();
+    } else {
+      console.log('Token expired in-app. Showing Session Expired banner.');
+      onAuthSuccessCallback = callback;
+      showSessionExpiredBanner();
     }
   } else {
     // Token is still valid, execute callback immediately
     callback();
+  }
+}
+
+function showSessionExpiredBanner() {
+  const banner = document.getElementById('session-expired-banner');
+  if (banner) {
+    banner.style.display = 'flex';
+  }
+}
+
+function hideSessionExpiredBanner() {
+  const banner = document.getElementById('session-expired-banner');
+  if (banner) {
+    banner.style.display = 'none';
   }
 }
 

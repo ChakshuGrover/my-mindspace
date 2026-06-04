@@ -1574,3 +1574,40 @@ html {
 label {
   touch-action: manipulation;
 }
+
+/* --- Session Expired Banner --- */
+.session-expired-banner {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-glass-hover);
+  border-radius: var(--radius-md);
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(168, 85, 247, 0.15);
+  z-index: 1000;
+  animation: slideUp var(--transition-normal);
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  border-color: var(--accent-purple);
+}
+
+@keyframes slideUp {
+  0% { transform: translate(-50%, 100px); opacity: 0; }
+  100% { transform: translate(-50%, 0); opacity: 1; }
+}
+
+@media (max-width: 768px) {
+  .session-expired-banner {
+    width: calc(100% - 32px);
+    flex-direction: column;
+    text-align: center;
+    gap: 12px;
+    padding: 16px;
+    bottom: 16px;
+  }
+}
