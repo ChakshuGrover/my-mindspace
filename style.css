@@ -910,6 +910,10 @@ html {
   border: 1px solid var(--border-glass);
 }
 
+.detail-tags-list {
+  display: none !important;
+}
+
 /* --- Floating Add Button --- */
 .floating-add-container {
   position: fixed;

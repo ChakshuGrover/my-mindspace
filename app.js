@@ -582,6 +582,9 @@ async function loadMindItems() {
       
       // Update local storage cache
       saveFilesCache();
+      
+      // Trigger background tag enrichment
+      runBackgroundTagsEnrichment();
     } else {
       driveFiles = [];
       saveFilesCache();
@@ -802,7 +805,7 @@ async function analyzeInputWithAI(inputText) {
       "title": "A short, beautiful, conceptual title for the card",
       "ai_analysis": {
         "summary": "A concise 1-2 sentence overview/abstract of the item. For quotes, write a beautiful reflection or insight. For colors, describe the feeling/mood of the color.",
-        "tags": ["3 to 7 relevant tags representing topics, concepts, colors, or moods. Do not use hashtags, just simple lowercase words"],
+        "tags": ["8 to 15 relevant tags representing categories, topics, entities, or related concepts to index this item for semantic search. Do not use hashtags, just simple lowercase words"],
         "vibe": "1-3 descriptive words of the aesthetic/feeling (e.g., 'calm, retro', 'futuristic, clean')",
         "key_takeaways": ["1-3 bulleted key takeaways, steps, recipes, or points. Leave empty for colors."]
       },
@@ -1047,6 +1050,92 @@ async function executeAISearch(query) {
     if (loader) loader.setAttribute('hidden', 'true');
     renderGrid();
   }
+}
+
+async function enrichTagsWithAI(item) {
+  let apiKey = safeStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '';
+  const email = userEmail || safeStorage.getItem('mymind_user_email');
+  const isChakshu = email === 'chakshu.grover8@gmail.com';
+  if (!apiKey && !isChakshu) return null;
+
+  const prompt = `
+    Analyze the following item and generate a list of 8 to 15 highly descriptive tags that represent its topics, concepts, entities, and categories for semantic search indexing.
+    Do not use hashtags. Respond STRICTLY in a JSON array of lowercase strings.
+    
+    Type: ${item.type || 'note'}
+    Title: ${item.title || ''}
+    URL: ${item.url || ''}
+    Content: ${item.content?.raw_text || ''}
+    Summary: ${item.ai_analysis?.summary || ''}
+  `;
+
+  try {
+    const response = await fetch(`/api/gemini?model=gemma-4-31b-it&key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'ARRAY',
+            items: { type: 'STRING' }
+          }
+        }
+      })
+    });
+    if (!response.ok) return null;
+    const responseData = await response.json();
+    const parts = responseData.candidates?.[0]?.content?.parts || [];
+    const textPart = parts.find(p => !p.thought) || parts[0] || { text: '' };
+    const rawText = textPart.text || '';
+    const tags = cleanAndParseJSON(rawText);
+    return Array.isArray(tags) ? tags : null;
+  } catch (e) {
+    console.error('Enrichment error:', e);
+    return null;
+  }
+}
+
+async function runBackgroundTagsEnrichment() {
+  if (safeStorage.getItem('mymind_tags_enriched_v1') === 'true') {
+    return;
+  }
+  if (!accessToken) return;
+
+  const itemsToEnrich = driveFiles.filter(item => !item.isPlaceholder && !item.tags_enriched_v1);
+  if (itemsToEnrich.length === 0) {
+    safeStorage.setItem('mymind_tags_enriched_v1', 'true');
+    return;
+  }
+
+  console.log(`Starting background tag enrichment for ${itemsToEnrich.length} items...`);
+  
+  for (const item of itemsToEnrich) {
+    try {
+      const newTags = await enrichTagsWithAI(item);
+      if (newTags && newTags.length > 0) {
+        const uniqueTags = Array.from(new Set([...(item.ai_analysis?.tags || []), ...newTags]));
+        if (!item.ai_analysis) item.ai_analysis = {};
+        item.ai_analysis.tags = uniqueTags;
+        item.tags_enriched_v1 = true;
+
+        if (item._drive_file_id) {
+          await uploadFileContent(item._drive_file_id, item);
+        }
+      } else {
+        item.tags_enriched_v1 = true;
+      }
+    } catch (e) {
+      console.error(`Failed to enrich tags for item ${item.id}:`, e);
+      item.tags_enriched_v1 = true;
+    }
+    await new Promise(resolve => setTimeout(resolve, 2500));
+  }
+
+  safeStorage.setItem('mymind_tags_enriched_v1', 'true');
+  saveFilesCache();
+  console.log('Background tag enrichment complete!');
 }
 
 // Fallback Mock Local Parser in case API key is missing
@@ -1519,10 +1608,7 @@ function renderGrid() {
             ${remainingCount > 0 ? `<div style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-inline-start: 22px; margin-block-start: 4px;">+ ${remainingCount} more tasks</div>` : ''}
           </div>
           <div class="card-meta">
-            <div class="card-tags">
-              ${(item.ai_analysis.tags || []).slice(0, 3).map(tag => `<span class="card-tag">#${tag}</span>`).join('')}
-            </div>
-            <span class="card-date">${formatCardDate(item.created_at)}</span>
+            <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
           </div>
         `;
       }
@@ -1534,10 +1620,7 @@ function renderGrid() {
             <div class="card-article-source">${item.title}</div>
             <div class="card-article-title">${item.ai_analysis.summary}</div>
             <div class="card-meta">
-              <div class="card-tags">
-                ${(item.ai_analysis.tags || []).slice(0, 3).map(tag => `<span class="card-tag">#${tag}</span>`).join('')}
-              </div>
-              <span class="card-date">${formatCardDate(item.created_at)}</span>
+              <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
             </div>
           </div>
         `;
@@ -1547,10 +1630,7 @@ function renderGrid() {
           <div class="card-note-title">${item.title}</div>
           <div class="card-note-desc">${item.ai_analysis.summary}</div>
           <div class="card-meta">
-            <div class="card-tags">
-              ${(item.ai_analysis.tags || []).slice(0, 3).map(tag => `<span class="card-tag">#${tag}</span>`).join('')}
-            </div>
-            <span class="card-date">${formatCardDate(item.created_at)}</span>
+            <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
           </div>
         `;
       }
