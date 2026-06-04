@@ -19,6 +19,8 @@ try {
 let tokenClient;
 let accessToken = null;
 let userEmail = null;
+let googleUserId = null;
+let settingsFileId = null;
 let driveFiles = []; // Array of downloaded mind items
 let folders = []; // Array of virtual folders
 let currentFilter = 'all'; // 'all', 'type-quote', 'folder-ID', etc.
@@ -388,8 +390,12 @@ async function verifyAndFetchData() {
     
     const profile = await profileRes.json();
     userEmail = profile.email || null;
+    googleUserId = profile.sub || null;
     if (userEmail) {
       safeStorage.setItem('mymind_user_email', userEmail);
+    }
+    if (googleUserId) {
+      safeStorage.setItem('mymind_google_user_id', googleUserId);
     }
     document.getElementById('user-avatar').src = profile.picture || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp';
     document.getElementById('user-name').textContent = profile.name || 'Personal Mind';
@@ -398,7 +404,10 @@ async function verifyAndFetchData() {
 
     // Start background sync without blocking the UI
     loadFolders().then(() => {
-      loadMindItems();
+      Promise.all([
+        loadSettingsFromDrive(),
+        loadMindItems()
+      ]);
     });
 
     handleShareQueryParams();
@@ -1580,7 +1589,7 @@ async function saveDetailEdits() {
 }
 
 // --- Configuration Management ---
-function saveSettings(e) {
+async function saveSettings(e) {
   e.preventDefault();
   const geminiKey = document.getElementById('setting-gemini-key').value.trim();
   const model = document.getElementById('setting-model').value;
@@ -1589,7 +1598,143 @@ function saveSettings(e) {
   safeStorage.setItem(STORAGE_KEYS.AI_MODEL, model);
 
   closeModal('settings-modal');
-  showToast('Settings saved.');
+  showToast('Saving settings...');
+
+  try {
+    await syncSettingsToDrive(geminiKey, model);
+    showToast('Settings saved & synced.');
+  } catch (err) {
+    showToast('Settings saved locally. Sync failed.');
+  }
+}
+
+// Simple encryption using XOR with a key derived from user ID
+function encryptKey(text, key) {
+  if (!text) return '';
+  let result = '';
+  for (let i = 0; i < text.length; i++) {
+    result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  return btoa(unescape(encodeURIComponent(result))); // Base64 encode
+}
+
+function decryptKey(encoded, key) {
+  if (!encoded) return '';
+  try {
+    const text = decodeURIComponent(escape(atob(encoded)));
+    let result = '';
+    for (let i = 0; i < text.length; i++) {
+      result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+    }
+    return result;
+  } catch (e) {
+    console.error('Decryption failed:', e);
+    return '';
+  }
+}
+
+async function loadSettingsFromDrive() {
+  if (!accessToken) return;
+  setSyncStatus('syncing', 'Loading Settings...');
+  try {
+    // Search settings.json in appDataFolder
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='settings.json' and mimeType='application/json'&fields=files(id, name)`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    const data = await res.json();
+    
+    if (data.files && data.files.length > 0) {
+      const file = data.files[0];
+      settingsFileId = file.id;
+      safeStorage.setItem('settings_file_id', file.id);
+
+      const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const remoteSettings = await contentRes.json();
+      
+      // Decrypt Gemini API key
+      const encryptionKey = googleUserId || safeStorage.getItem('mymind_google_user_id') || 'mymindspace_fallback';
+      if (remoteSettings.encryptedGeminiKey) {
+        const decryptedKey = decryptKey(remoteSettings.encryptedGeminiKey, encryptionKey);
+        if (decryptedKey) {
+          safeStorage.setItem(STORAGE_KEYS.GEMINI_KEY, decryptedKey);
+          document.getElementById('setting-gemini-key').value = decryptedKey;
+        }
+      }
+      
+      if (remoteSettings.model) {
+        safeStorage.setItem(STORAGE_KEYS.AI_MODEL, remoteSettings.model);
+        document.getElementById('setting-model').value = remoteSettings.model;
+      }
+      setSyncStatus('synced', 'Synced');
+    } else {
+      console.log('settings.json not found on Google Drive.');
+    }
+  } catch (err) {
+    console.error('Failed to load settings from Google Drive:', err);
+  }
+}
+
+async function syncSettingsToDrive(geminiKey, model) {
+  if (!accessToken) return;
+  setSyncStatus('syncing', 'Syncing Settings...');
+  try {
+    const encryptionKey = googleUserId || safeStorage.getItem('mymind_google_user_id') || 'mymindspace_fallback';
+    const encryptedGeminiKey = encryptKey(geminiKey, encryptionKey);
+
+    const settingsPayload = {
+      encryptedGeminiKey,
+      model,
+      updated_at: new Date().toISOString()
+    };
+
+    let fileId = settingsFileId || safeStorage.getItem('settings_file_id');
+    
+    if (!fileId) {
+      // Search again
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='settings.json' and mimeType='application/json'&fields=files(id)`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      if (data.files && data.files.length > 0) {
+        fileId = data.files[0].id;
+        settingsFileId = fileId;
+        safeStorage.setItem('settings_file_id', fileId);
+      }
+    }
+
+    if (fileId) {
+      await uploadFileContent(fileId, settingsPayload);
+      setSyncStatus('synced', 'Synced');
+    } else {
+      // Create new settings.json file
+      console.log('Creating settings.json on Google Drive...');
+      const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: 'settings.json',
+          mimeType: 'application/json',
+          parents: ['appDataFolder']
+        })
+      });
+      const newFile = await createRes.json();
+      fileId = newFile.id;
+      settingsFileId = fileId;
+      safeStorage.setItem('settings_file_id', fileId);
+      
+      await uploadFileContent(fileId, settingsPayload);
+      setSyncStatus('synced', 'Synced');
+    }
+  } catch (err) {
+    console.error('Failed to sync settings to Google Drive:', err);
+    setSyncStatus('synced', 'Sync Failed');
+    throw err;
+  }
 }
 
 // --- App Control Utilities ---
