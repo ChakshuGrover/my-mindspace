@@ -226,6 +226,26 @@ function setupEventListeners() {
   document.getElementById('btn-refresh').addEventListener('click', () => { refreshData(); closeMobileSidebar(); });
   document.getElementById('btn-mobile-refresh').addEventListener('click', refreshData);
 
+  const btnMobileSearch = document.getElementById('btn-mobile-search');
+  if (btnMobileSearch) {
+    btnMobileSearch.addEventListener('click', () => {
+      const header = document.querySelector('.workspace-header');
+      if (header) {
+        const isOpen = header.classList.toggle('search-open');
+        if (isOpen) {
+          const input = document.getElementById('search-input');
+          if (input) input.focus();
+        } else {
+          const input = document.getElementById('search-input');
+          if (input && input.value !== '') {
+            input.value = '';
+            renderGrid();
+          }
+        }
+      }
+    });
+  }
+
   // Mobile menu trigger and overlay clicking
   const btnMobileMenu = document.getElementById('btn-mobile-menu');
   if (btnMobileMenu) {
