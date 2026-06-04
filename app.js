@@ -983,11 +983,16 @@ async function executeAISearch(query) {
       ]
     };
     
-    if (!model.includes('gemma')) {
-      payload.generationConfig = {
-        responseMimeType: 'application/json'
-      };
-    }
+    payload.generationConfig = {
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: 'ARRAY',
+        description: 'List of matching item IDs, ordered by relevance',
+        items: {
+          type: 'STRING'
+        }
+      }
+    };
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -1028,6 +1033,7 @@ async function executeAISearch(query) {
       return;
     }
     console.error('AI search failed:', err);
+    showToast('AI search failed. Falling back to keyword search.');
     aiFilteredIds = null;
     const container = document.querySelector('.search-container');
     if (container) container.classList.remove('ai-searching');
