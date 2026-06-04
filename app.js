@@ -804,7 +804,8 @@ async function analyzeInputWithAI(inputText) {
       "type": "quote" | "color" | "article" | "note",
       "title": "A short, beautiful, conceptual title for the card",
       "ai_analysis": {
-        "summary": "A detailed, comprehensive summary paragraph (3-6 sentences) highlighting the core concepts, key details, and main context of the item. For quotes, write a rich, beautiful reflection and interpretation. For colors, write an evocative description of the feeling, mood, and aesthetic of the color.",
+        "summary": "A concise 1-2 sentence overview/abstract of the item. For quotes, write a beautiful reflection or insight. For colors, describe the feeling/mood of the color.",
+        "detailed_summary": "A detailed, comprehensive summary paragraph (3-6 sentences) highlighting the core concepts, key details, and main context of the item. For quotes, write a rich reflection. For colors, write an evocative description.",
         "tags": ["8 to 15 relevant tags representing categories, topics, entities, or related concepts to index this item for semantic search. Do not use hashtags, just simple lowercase words"],
         "vibe": "1-3 descriptive words of the aesthetic/feeling (e.g., 'calm, retro', 'futuristic, clean')",
         "key_takeaways": ["1-3 bulleted key takeaways, steps, recipes, or points. Leave empty for colors."]
@@ -1059,20 +1060,21 @@ async function enrichMetadataWithAI(item) {
   if (!apiKey && !isChakshu) return null;
 
   const prompt = `
-    Analyze the following item and perform two tasks:
+    Analyze the following item and perform three tasks:
     1. Generate a list of 8 to 15 highly descriptive tags that represent its topics, concepts, entities, and categories for semantic search indexing. (Do not use hashtags. Respond with simple lowercase words).
-    2. Generate a much larger, detailed, and comprehensive summary paragraph (3 to 6 sentences) summarizing the core concepts, main context, and key details of the item. For quotes, write a rich reflection. For colors, write an evocative description of the vibe and mood.
+    2. Generate a concise, abstract summary (1 to 2 sentences) of the item. For quotes, write a beautiful reflection. For colors, describe the mood.
+    3. Generate a much larger, detailed, and comprehensive summary paragraph (3 to 6 sentences) summarizing the core concepts, main context, and key details of the item. For quotes, write a rich reflection. For colors, write an evocative description of the vibe.
 
     Type: ${item.type || 'note'}
     Title: ${item.title || ''}
     URL: ${item.url || ''}
     Content: ${item.content?.raw_text || ''}
-    Original Summary: ${item.ai_analysis?.summary || ''}
 
     Respond STRICTLY in a JSON object with this schema:
     {
       "tags": ["tag1", "tag2", ...],
-      "summary": "Your detailed summary paragraph here"
+      "summary": "Your concise 1-2 sentence summary here",
+      "detailed_summary": "Your detailed 3-6 sentence summary here"
     }
   `;
 
@@ -1091,9 +1093,10 @@ async function enrichMetadataWithAI(item) {
                 type: 'ARRAY',
                 items: { type: 'STRING' }
               },
-              summary: { type: 'STRING' }
+              summary: { type: 'STRING' },
+              detailed_summary: { type: 'STRING' }
             },
-            required: ['tags', 'summary']
+            required: ['tags', 'summary', 'detailed_summary']
           }
         }
       })
@@ -1104,7 +1107,7 @@ async function enrichMetadataWithAI(item) {
     const textPart = parts.find(p => !p.thought) || parts[0] || { text: '' };
     const rawText = textPart.text || '';
     const result = cleanAndParseJSON(rawText);
-    if (result && Array.isArray(result.tags) && typeof result.summary === 'string') {
+    if (result && Array.isArray(result.tags) && typeof result.summary === 'string' && typeof result.detailed_summary === 'string') {
       return result;
     }
     return null;
@@ -1115,18 +1118,18 @@ async function enrichMetadataWithAI(item) {
 }
 
 async function runBackgroundMetadataEnrichment() {
-  if (safeStorage.getItem('mymind_metadata_enriched_v2') === 'true') {
+  if (safeStorage.getItem('mymind_metadata_enriched_v3') === 'true') {
     return;
   }
   if (!accessToken) return;
 
-  const itemsToEnrich = driveFiles.filter(item => !item.isPlaceholder && !item.metadata_enriched_v2);
+  const itemsToEnrich = driveFiles.filter(item => !item.isPlaceholder && !item.metadata_enriched_v3);
   if (itemsToEnrich.length === 0) {
-    safeStorage.setItem('mymind_metadata_enriched_v2', 'true');
+    safeStorage.setItem('mymind_metadata_enriched_v3', 'true');
     return;
   }
 
-  console.log(`Starting background metadata enrichment (larger summary & 8-15 tags) for ${itemsToEnrich.length} items...`);
+  console.log(`Starting background metadata enrichment (detailed summary & 8-15 tags) for ${itemsToEnrich.length} items...`);
   
   for (const item of itemsToEnrich) {
     try {
@@ -1136,22 +1139,23 @@ async function runBackgroundMetadataEnrichment() {
         if (!item.ai_analysis) item.ai_analysis = {};
         item.ai_analysis.tags = uniqueTags;
         item.ai_analysis.summary = enriched.summary || item.ai_analysis.summary;
-        item.metadata_enriched_v2 = true;
+        item.ai_analysis.detailed_summary = enriched.detailed_summary;
+        item.metadata_enriched_v3 = true;
 
         if (item._drive_file_id) {
           await uploadFileContent(item._drive_file_id, item);
         }
       } else {
-        item.metadata_enriched_v2 = true;
+        item.metadata_enriched_v3 = true;
       }
     } catch (e) {
       console.error(`Failed to enrich metadata for item ${item.id}:`, e);
-      item.metadata_enriched_v2 = true;
+      item.metadata_enriched_v3 = true;
     }
     await new Promise(resolve => setTimeout(resolve, 2500));
   }
 
-  safeStorage.setItem('mymind_metadata_enriched_v2', 'true');
+  safeStorage.setItem('mymind_metadata_enriched_v3', 'true');
   saveFilesCache();
   console.log('Background metadata enrichment complete!');
   renderGrid();
@@ -1637,7 +1641,7 @@ function renderGrid() {
           ${thumbImg}
           <div class="card-article-content">
             <div class="card-article-source">${item.title}</div>
-            <div class="card-article-title">${item.ai_analysis.summary}</div>
+            <div class="card-article-title">${item.ai_analysis.detailed_summary || item.ai_analysis.summary}</div>
             <div class="card-meta">
               <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
             </div>
@@ -1647,7 +1651,7 @@ function renderGrid() {
       else { // note
         card.innerHTML = `
           <div class="card-note-title">${item.title}</div>
-          <div class="card-note-desc">${item.ai_analysis.summary}</div>
+          <div class="card-note-desc">${item.ai_analysis.detailed_summary || item.ai_analysis.summary}</div>
           <div class="card-meta">
             <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
           </div>
@@ -1805,6 +1809,13 @@ function showDetailModal(item) {
           <p>${item.ai_analysis.summary}</p>
         </div>
 
+        ${item.ai_analysis.detailed_summary ? `
+          <div class="detail-summary-box" style="margin-block-start: 16px;">
+            <div class="detail-summary-title">AI Detailed Summary</div>
+            <p>${item.ai_analysis.detailed_summary}</p>
+          </div>
+        ` : ''}
+
         ${item.ai_analysis.key_takeaways && item.ai_analysis.key_takeaways.length > 0 ? `
           <div>
             <h4 class="detail-summary-title" style="margin-block-end: 16px;">Key Takeaways</h4>
@@ -1833,6 +1844,13 @@ function showDetailModal(item) {
       <div class="detail-content">
         <h2 class="detail-title">${item.title}</h2>
         
+        ${item.ai_analysis.detailed_summary ? `
+          <div class="detail-summary-box" style="margin-block-end: 20px;">
+            <div class="detail-summary-title">AI Detailed Summary</div>
+            <p>${item.ai_analysis.detailed_summary}</p>
+          </div>
+        ` : ''}
+
         ${item.ai_analysis.key_takeaways && item.ai_analysis.key_takeaways.length > 0 ? `
           <div>
             <h4 class="detail-summary-title" style="margin-block-end: 16px;">Action Items & Outline</h4>
