@@ -583,8 +583,8 @@ async function loadMindItems() {
       // Update local storage cache
       saveFilesCache();
       
-      // Trigger background tag enrichment
-      runBackgroundTagsEnrichment();
+      // Trigger background metadata enrichment (detailed summaries and increased tags)
+      runBackgroundMetadataEnrichment();
     } else {
       driveFiles = [];
       saveFilesCache();
@@ -804,7 +804,7 @@ async function analyzeInputWithAI(inputText) {
       "type": "quote" | "color" | "article" | "note",
       "title": "A short, beautiful, conceptual title for the card",
       "ai_analysis": {
-        "summary": "A concise 1-2 sentence overview/abstract of the item. For quotes, write a beautiful reflection or insight. For colors, describe the feeling/mood of the color.",
+        "summary": "A detailed, comprehensive summary paragraph (3-6 sentences) highlighting the core concepts, key details, and main context of the item. For quotes, write a rich, beautiful reflection and interpretation. For colors, write an evocative description of the feeling, mood, and aesthetic of the color.",
         "tags": ["8 to 15 relevant tags representing categories, topics, entities, or related concepts to index this item for semantic search. Do not use hashtags, just simple lowercase words"],
         "vibe": "1-3 descriptive words of the aesthetic/feeling (e.g., 'calm, retro', 'futuristic, clean')",
         "key_takeaways": ["1-3 bulleted key takeaways, steps, recipes, or points. Leave empty for colors."]
@@ -1052,21 +1052,28 @@ async function executeAISearch(query) {
   }
 }
 
-async function enrichTagsWithAI(item) {
+async function enrichMetadataWithAI(item) {
   let apiKey = safeStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '';
   const email = userEmail || safeStorage.getItem('mymind_user_email');
   const isChakshu = email === 'chakshu.grover8@gmail.com';
   if (!apiKey && !isChakshu) return null;
 
   const prompt = `
-    Analyze the following item and generate a list of 8 to 15 highly descriptive tags that represent its topics, concepts, entities, and categories for semantic search indexing.
-    Do not use hashtags. Respond STRICTLY in a JSON array of lowercase strings.
-    
+    Analyze the following item and perform two tasks:
+    1. Generate a list of 8 to 15 highly descriptive tags that represent its topics, concepts, entities, and categories for semantic search indexing. (Do not use hashtags. Respond with simple lowercase words).
+    2. Generate a much larger, detailed, and comprehensive summary paragraph (3 to 6 sentences) summarizing the core concepts, main context, and key details of the item. For quotes, write a rich reflection. For colors, write an evocative description of the vibe and mood.
+
     Type: ${item.type || 'note'}
     Title: ${item.title || ''}
     URL: ${item.url || ''}
     Content: ${item.content?.raw_text || ''}
-    Summary: ${item.ai_analysis?.summary || ''}
+    Original Summary: ${item.ai_analysis?.summary || ''}
+
+    Respond STRICTLY in a JSON object with this schema:
+    {
+      "tags": ["tag1", "tag2", ...],
+      "summary": "Your detailed summary paragraph here"
+    }
   `;
 
   try {
@@ -1078,8 +1085,15 @@ async function enrichTagsWithAI(item) {
         generationConfig: {
           responseMimeType: 'application/json',
           responseSchema: {
-            type: 'ARRAY',
-            items: { type: 'STRING' }
+            type: 'OBJECT',
+            properties: {
+              tags: {
+                type: 'ARRAY',
+                items: { type: 'STRING' }
+              },
+              summary: { type: 'STRING' }
+            },
+            required: ['tags', 'summary']
           }
         }
       })
@@ -1089,53 +1103,58 @@ async function enrichTagsWithAI(item) {
     const parts = responseData.candidates?.[0]?.content?.parts || [];
     const textPart = parts.find(p => !p.thought) || parts[0] || { text: '' };
     const rawText = textPart.text || '';
-    const tags = cleanAndParseJSON(rawText);
-    return Array.isArray(tags) ? tags : null;
+    const result = cleanAndParseJSON(rawText);
+    if (result && Array.isArray(result.tags) && typeof result.summary === 'string') {
+      return result;
+    }
+    return null;
   } catch (e) {
-    console.error('Enrichment error:', e);
+    console.error('Metadata enrichment error:', e);
     return null;
   }
 }
 
-async function runBackgroundTagsEnrichment() {
-  if (safeStorage.getItem('mymind_tags_enriched_v1') === 'true') {
+async function runBackgroundMetadataEnrichment() {
+  if (safeStorage.getItem('mymind_metadata_enriched_v2') === 'true') {
     return;
   }
   if (!accessToken) return;
 
-  const itemsToEnrich = driveFiles.filter(item => !item.isPlaceholder && !item.tags_enriched_v1);
+  const itemsToEnrich = driveFiles.filter(item => !item.isPlaceholder && !item.metadata_enriched_v2);
   if (itemsToEnrich.length === 0) {
-    safeStorage.setItem('mymind_tags_enriched_v1', 'true');
+    safeStorage.setItem('mymind_metadata_enriched_v2', 'true');
     return;
   }
 
-  console.log(`Starting background tag enrichment for ${itemsToEnrich.length} items...`);
+  console.log(`Starting background metadata enrichment (larger summary & 8-15 tags) for ${itemsToEnrich.length} items...`);
   
   for (const item of itemsToEnrich) {
     try {
-      const newTags = await enrichTagsWithAI(item);
-      if (newTags && newTags.length > 0) {
-        const uniqueTags = Array.from(new Set([...(item.ai_analysis?.tags || []), ...newTags]));
+      const enriched = await enrichMetadataWithAI(item);
+      if (enriched) {
+        const uniqueTags = Array.from(new Set([...(item.ai_analysis?.tags || []), ...(enriched.tags || [])]));
         if (!item.ai_analysis) item.ai_analysis = {};
         item.ai_analysis.tags = uniqueTags;
-        item.tags_enriched_v1 = true;
+        item.ai_analysis.summary = enriched.summary || item.ai_analysis.summary;
+        item.metadata_enriched_v2 = true;
 
         if (item._drive_file_id) {
           await uploadFileContent(item._drive_file_id, item);
         }
       } else {
-        item.tags_enriched_v1 = true;
+        item.metadata_enriched_v2 = true;
       }
     } catch (e) {
-      console.error(`Failed to enrich tags for item ${item.id}:`, e);
-      item.tags_enriched_v1 = true;
+      console.error(`Failed to enrich metadata for item ${item.id}:`, e);
+      item.metadata_enriched_v2 = true;
     }
     await new Promise(resolve => setTimeout(resolve, 2500));
   }
 
-  safeStorage.setItem('mymind_tags_enriched_v1', 'true');
+  safeStorage.setItem('mymind_metadata_enriched_v2', 'true');
   saveFilesCache();
-  console.log('Background tag enrichment complete!');
+  console.log('Background metadata enrichment complete!');
+  renderGrid();
 }
 
 // Fallback Mock Local Parser in case API key is missing
