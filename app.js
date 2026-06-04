@@ -273,8 +273,7 @@ function setupEventListeners() {
     });
   });
 
-  // Check clipboard when browser page is focused / re-opened
-  window.addEventListener('focus', checkClipboardForUrl);
+
 }
 
 // --- Navigation & Landing UI Switches ---
@@ -1591,65 +1590,4 @@ async function refreshData() {
   }
 }
 
-// --- Clipboard URL Auto-Detection ---
-async function checkClipboardForUrl() {
-  if (!accessToken) return; // Only check if logged in
-  
-  try {
-    if (navigator.clipboard && navigator.clipboard.readText) {
-      const text = await navigator.clipboard.readText();
-      const trimmed = (text || '').trim();
-      
-      const isUrl = trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('www.');
-      if (isUrl) {
-        // Prevent duplicate prompts by checking if URL is already saved
-        const alreadySaved = driveFiles.some(item => item.url === trimmed || item.content?.raw_text === trimmed);
-        if (alreadySaved) return;
-        
-        showClipboardPrompt(trimmed);
-      }
-    }
-  } catch (err) {
-    // Fail silently (e.g. permission denied)
-    console.log('Clipboard access not allowed or supported:', err);
-  }
-}
 
-function showClipboardPrompt(url) {
-  if (document.getElementById('clipboard-prompt')) return;
-  
-  const promptDiv = document.createElement('div');
-  promptDiv.id = 'clipboard-prompt';
-  promptDiv.className = 'clipboard-prompt-banner';
-  promptDiv.innerHTML = `
-    <div class="prompt-content">
-      <span class="prompt-icon">📋</span>
-      <div class="prompt-text">
-        <span class="prompt-title">Link detected in clipboard</span>
-        <span class="prompt-url">${url.length > 35 ? url.substring(0, 35) + '...' : url}</span>
-      </div>
-    </div>
-    <div class="prompt-actions">
-      <button class="btn-prompt btn-prompt--dismiss" id="btn-clip-dismiss">Ignore</button>
-      <button class="btn-prompt btn-prompt--confirm" id="btn-clip-add">Add</button>
-    </div>
-  `;
-  
-  document.body.appendChild(promptDiv);
-  
-  document.getElementById('btn-clip-dismiss').addEventListener('click', () => {
-    promptDiv.remove();
-  });
-  
-  document.getElementById('btn-clip-add').addEventListener('click', () => {
-    promptDiv.remove();
-    addNewItemDirectly(url);
-  });
-  
-  // Auto-dismiss after 10 seconds
-  setTimeout(() => {
-    if (document.body.contains(promptDiv)) {
-      promptDiv.remove();
-    }
-  }, 10000);
-}
