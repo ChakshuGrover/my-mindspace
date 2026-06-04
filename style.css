@@ -1366,12 +1366,14 @@ html {
     left: -290px; /* Hidden offscreen by default on mobile */
     width: 280px;
     height: 100vh;
+    height: 100dvh; /* Use dynamic viewport height to avoid bottom bar occlusion */
     background: var(--bg-secondary); /* Solid background on mobile to prevent overlapping content transparency */
     z-index: 100;
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.3);
     border-inline-end: 1px solid var(--border-glass-hover);
     display: flex; /* Ensure display is flex overriding display: none */
+    padding-bottom: calc(32px + env(safe-area-inset-bottom)); /* Offset home indicator and dynamic bottom bars */
   }
 
   .sidebar.open {
