@@ -933,16 +933,25 @@ async function executeAISearch(query) {
     return;
   }
 
-  const notesIndex = loadedFiles.map(item => ({
-    id: item.id,
-    title: item.title || 'Untitled',
-    type: item.type || 'note',
-    created_at: item.created_at || '',
-    summary: item.ai_analysis?.summary || '',
-    tags: item.ai_analysis?.tags || [],
-    vibe: item.ai_analysis?.vibe || '',
-    content: (item.content?.raw_text || '').substring(0, 300)
-  }));
+  const notesIndex = loadedFiles.map(item => {
+    let localCreatedDate = '';
+    if (item.created_at) {
+      const d = new Date(item.created_at);
+      if (!isNaN(d.getTime())) {
+        localCreatedDate = d.toLocaleString();
+      }
+    }
+    return {
+      id: item.id,
+      title: item.title || 'Untitled',
+      type: item.type || 'note',
+      created_at: localCreatedDate || item.created_at || '',
+      summary: item.ai_analysis?.summary || '',
+      tags: item.ai_analysis?.tags || [],
+      vibe: item.ai_analysis?.vibe || '',
+      content: (item.content?.raw_text || '').substring(0, 300)
+    };
+  });
 
   const systemInstruction = `
     You are a highly advanced AI search engine running inside "MyMindSpace", a personal canvas for notes, articles/links, to-dos, and colors.
