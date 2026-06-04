@@ -434,6 +434,34 @@ html {
   color: #fff;
 }
 
+.btn-delete-folder {
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (min-width: 1025px) {
+  .btn-delete-folder {
+    opacity: 0;
+  }
+  .folder-nav-item:hover .btn-delete-folder {
+    opacity: 0.6;
+  }
+  .folder-nav-item:hover .btn-delete-folder:hover {
+    opacity: 1;
+    color: var(--accent-pink);
+  }
+}
+
 .folder-nav-info {
   display: flex;
   align-items: center;

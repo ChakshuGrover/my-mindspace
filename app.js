@@ -614,7 +614,10 @@ function renderSidebarFolders() {
         <span class="folder-emoji">${folder.emoji}</span>
         <span class="folder-name">${folder.name}</span>
       </div>
-      <span class="folder-count">${count}</span>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="folder-count">${count}</span>
+        <span class="btn-delete-folder" title="Delete Folder">&times;</span>
+      </div>
     `;
 
     navItem.addEventListener('click', (e) => {
@@ -625,8 +628,71 @@ function renderSidebarFolders() {
       closeMobileSidebar();
     });
 
+    const btnDelete = navItem.querySelector('.btn-delete-folder');
+    if (btnDelete) {
+      btnDelete.addEventListener('click', (e) => {
+        e.stopPropagation(); // Avoid triggering navigation filter click
+        confirmDeleteFolder(folder.id, folder.name);
+      });
+    }
+
     container.appendChild(navItem);
   });
+}
+
+function confirmDeleteFolder(folderId, folderName) {
+  if (confirm(`Are you sure you want to delete the folder "${folderName}"? All notes inside will be moved to your Inbox.`)) {
+    deleteFolder(folderId, folderName);
+  }
+}
+
+async function deleteFolder(folderId, folderName) {
+  setSyncStatus('syncing', 'Deleting Folder...');
+  
+  // 1. Remove folder from global folders list
+  folders = folders.filter(f => f.id !== folderId);
+  
+  // 2. Remove folder reference from files
+  let itemsToUpdate = [];
+  driveFiles.forEach(item => {
+    if (item.folders && item.folders.includes(folderId)) {
+      item.folders = item.folders.filter(fid => fid !== folderId);
+      itemsToUpdate.push(item);
+    }
+  });
+
+  // 3. Reset filter if the currently selected filter is this folder
+  if (currentFilter === 'folder-' + folderId) {
+    currentFilter = 'all';
+    const allBtn = document.getElementById('filter-all');
+    if (allBtn) {
+      document.querySelectorAll('.sidebar-nav .nav-item, .folder-nav-item').forEach(el => el.classList.remove('active'));
+      allBtn.classList.add('active');
+    }
+  }
+
+  saveFoldersCache();
+  renderSidebarFolders();
+  renderGrid();
+
+  try {
+    // 4. Upload updated folders list to Google Drive
+    const foldersFileId = safeStorage.getItem('folders_file_id');
+    await uploadFileContent(foldersFileId, folders);
+    
+    // 5. Upload updated files to Google Drive in the background
+    for (const item of itemsToUpdate) {
+      await uploadFileContent(item._drive_file_id, item);
+    }
+    saveFilesCache();
+
+    showToast(`Deleted folder "${folderName}". Items moved to Inbox.`);
+    setSyncStatus('synced', 'Synced');
+  } catch (err) {
+    console.error('Failed to sync folder deletion to Google Drive:', err);
+    showToast('Failed to sync deletion to Google Drive.');
+    setSyncStatus('synced', 'Sync Failed');
+  }
 }
 
 function populateFolderSelect() {
