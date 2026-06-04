@@ -294,6 +294,7 @@ function showAppPage() {
 function openModal(modalId) {
   const modal = document.getElementById(modalId);
   modal.removeAttribute('hidden');
+  document.body.classList.add('modal-open');
   
   // Set focus on inputs
   if (modalId === 'add-modal') {
@@ -306,6 +307,10 @@ function openModal(modalId) {
 
 function closeModal(modalId) {
   document.getElementById(modalId).setAttribute('hidden', 'true');
+  const openModals = document.querySelectorAll('.modal:not([hidden])');
+  if (openModals.length === 0) {
+    document.body.classList.remove('modal-open');
+  }
 }
 
 function toggleMobileSidebar() {
@@ -334,6 +339,7 @@ function closeMobileSidebar() {
 
 function closeAllModals() {
   document.querySelectorAll('.modal').forEach(m => m.setAttribute('hidden', 'true'));
+  document.body.classList.remove('modal-open');
 }
 
 // --- Google Drive API Integration ---
