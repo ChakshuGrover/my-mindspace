@@ -40,7 +40,6 @@ const DEFAULT_CLIENT_ID = '345073896444-jvm03jjn5dn6pfh95d7jbtlh4shq4ooj.apps.go
 const STORAGE_KEYS = {
   CLIENT_ID: 'mymind_client_id',
   GEMINI_KEY: 'mymind_gemini_key',
-  AI_MODEL: 'mymind_ai_model',
   ACCESS_TOKEN: 'mymind_access_token'
 };
 
@@ -104,22 +103,10 @@ function initApp() {
 
   if (!isValidClientId) {
     safeStorage.setItem(STORAGE_KEYS.CLIENT_ID, DEFAULT_CLIENT_ID);
-    safeStorage.setItem(STORAGE_KEYS.AI_MODEL, 'gemma-4-31b-it');
-  }
-
-  // One-time migration to Gemma for existing users who had the old default
-  const migrated = safeStorage.getItem('mymind_gemma_migrated');
-  if (!migrated) {
-    const savedModel = safeStorage.getItem(STORAGE_KEYS.AI_MODEL);
-    if (!savedModel || savedModel === 'gemini-3.1-flash-lite') {
-      safeStorage.setItem(STORAGE_KEYS.AI_MODEL, 'gemma-4-31b-it');
-    }
-    safeStorage.setItem('mymind_gemma_migrated', 'true');
   }
 
   // Load configuration into Settings Form
   document.getElementById('setting-gemini-key').value = safeStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '';
-  document.getElementById('setting-model').value = safeStorage.getItem(STORAGE_KEYS.AI_MODEL);
 
   // Bind Event Listeners
   setupEventListeners();
@@ -795,7 +782,7 @@ async function analyzeInputWithAI(inputText) {
     return mockAnalysis(inputText);
   }
 
-  const model = safeStorage.getItem(STORAGE_KEYS.AI_MODEL) || 'gemma-4-31b-it';
+  const model = 'gemma-4-31b-it';
   
   const systemInstruction = `
     You are a premium, highly smart AI engine running inside the "MyMindSpace" personal knowledge-base app.
@@ -931,7 +918,7 @@ async function executeAISearch(query) {
     return;
   }
 
-  const model = safeStorage.getItem(STORAGE_KEYS.AI_MODEL) || 'gemma-4-31b-it';
+  const model = 'gemini-3.1-flash-lite';
   const loadedFiles = driveFiles.filter(item => !item.isPlaceholder);
   if (loadedFiles.length === 0) {
     aiFilteredIds = [];
@@ -1916,16 +1903,14 @@ async function saveDetailEdits() {
 async function saveSettings(e) {
   e.preventDefault();
   const geminiKey = document.getElementById('setting-gemini-key').value.trim();
-  const model = document.getElementById('setting-model').value;
 
   safeStorage.setItem(STORAGE_KEYS.GEMINI_KEY, geminiKey);
-  safeStorage.setItem(STORAGE_KEYS.AI_MODEL, model);
 
   closeModal('settings-modal');
   showToast('Saving settings...');
 
   try {
-    await syncSettingsToDrive(geminiKey, model);
+    await syncSettingsToDrive(geminiKey);
     showToast('Settings saved & synced.');
   } catch (err) {
     showToast('Settings saved locally. Sync failed.');
@@ -1987,10 +1972,6 @@ async function loadSettingsFromDrive() {
         }
       }
       
-      if (remoteSettings.model) {
-        safeStorage.setItem(STORAGE_KEYS.AI_MODEL, remoteSettings.model);
-        document.getElementById('setting-model').value = remoteSettings.model;
-      }
       setSyncStatus('synced', 'Synced');
     } else {
       console.log('settings.json not found on Google Drive.');
@@ -2000,7 +1981,7 @@ async function loadSettingsFromDrive() {
   }
 }
 
-async function syncSettingsToDrive(geminiKey, model) {
+async function syncSettingsToDrive(geminiKey) {
   if (!accessToken) return;
   setSyncStatus('syncing', 'Syncing Settings...');
   try {
@@ -2009,7 +1990,6 @@ async function syncSettingsToDrive(geminiKey, model) {
 
     const settingsPayload = {
       encryptedGeminiKey,
-      model,
       updated_at: new Date().toISOString()
     };
 
