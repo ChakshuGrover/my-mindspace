@@ -349,7 +349,10 @@
     <div class="modal-backdrop" id="detail-modal-backdrop"></div>
     <div class="modal-panel modal-panel--detail">
       <header class="modal-header">
-        <div id="detail-type-badge" class="detail-type-badge">Article</div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div id="detail-type-badge" class="detail-type-badge">Article</div>
+          <span id="detail-date" style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;"></span>
+        </div>
         <button class="btn-close" id="btn-close-detail-modal">&times;</button>
       </header>
       <div class="modal-body" id="detail-modal-content">

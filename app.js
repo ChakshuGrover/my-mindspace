@@ -884,6 +884,13 @@ function cleanAndParseJSON(rawText) {
   }
 }
 
+function formatCardDate(isoString) {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 function resetAISearch() {
   aiFilteredIds = null;
   if (aiSearchAbortController) {
@@ -1499,8 +1506,11 @@ function renderGrid() {
             ${todoListHtml || '<div style="color: var(--text-muted); font-style: italic;">Empty list</div>'}
             ${remainingCount > 0 ? `<div style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-inline-start: 22px; margin-block-start: 4px;">+ ${remainingCount} more tasks</div>` : ''}
           </div>
-          <div class="card-tags">
-            ${(item.ai_analysis.tags || []).slice(0, 3).map(tag => `<span class="card-tag">#${tag}</span>`).join('')}
+          <div class="card-meta">
+            <div class="card-tags">
+              ${(item.ai_analysis.tags || []).slice(0, 3).map(tag => `<span class="card-tag">#${tag}</span>`).join('')}
+            </div>
+            <span class="card-date">${formatCardDate(item.created_at)}</span>
           </div>
         `;
       }
@@ -1511,8 +1521,11 @@ function renderGrid() {
           <div class="card-article-content">
             <div class="card-article-source">${item.title}</div>
             <div class="card-article-title">${item.ai_analysis.summary}</div>
-            <div class="card-tags">
-              ${(item.ai_analysis.tags || []).slice(0, 3).map(tag => `<span class="card-tag">#${tag}</span>`).join('')}
+            <div class="card-meta">
+              <div class="card-tags">
+                ${(item.ai_analysis.tags || []).slice(0, 3).map(tag => `<span class="card-tag">#${tag}</span>`).join('')}
+              </div>
+              <span class="card-date">${formatCardDate(item.created_at)}</span>
             </div>
           </div>
         `;
@@ -1521,8 +1534,11 @@ function renderGrid() {
         card.innerHTML = `
           <div class="card-note-title">${item.title}</div>
           <div class="card-note-desc">${item.ai_analysis.summary}</div>
-          <div class="card-tags">
-            ${(item.ai_analysis.tags || []).slice(0, 3).map(tag => `<span class="card-tag">#${tag}</span>`).join('')}
+          <div class="card-meta">
+            <div class="card-tags">
+              ${(item.ai_analysis.tags || []).slice(0, 3).map(tag => `<span class="card-tag">#${tag}</span>`).join('')}
+            </div>
+            <span class="card-date">${formatCardDate(item.created_at)}</span>
           </div>
         `;
       }
@@ -1587,6 +1603,7 @@ function showDetailModal(item) {
 
   typeBadge.textContent = item.type;
   tagsContainer.innerHTML = (item.ai_analysis.tags || []).map(tag => `<span class="card-tag">#${tag}</span>`).join('');
+  document.getElementById('detail-date').textContent = formatCardDate(item.created_at);
 
   currentDetailItem = item;
   isEditingDetail = false;

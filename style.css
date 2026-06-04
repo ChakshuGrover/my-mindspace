@@ -882,6 +882,24 @@ html {
   margin-block-start: 12px;
 }
 
+.card-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-block-start: 12px;
+}
+
+.card-meta .card-tags {
+  margin-block-start: 0;
+}
+
+.card-date {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .card-tag {
   font-size: 0.7rem;
   font-weight: 500;
