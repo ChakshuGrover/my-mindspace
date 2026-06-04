@@ -21,6 +21,8 @@ let accessToken = null;
 let userEmail = null;
 let googleUserId = null;
 let settingsFileId = null;
+let syncIntervalId = null;
+let lastSyncTime = 0;
 let driveFiles = []; // Array of downloaded mind items
 let folders = []; // Array of virtual folders
 let currentFilter = 'all'; // 'all', 'type-quote', 'folder-ID', etc.
@@ -121,6 +123,9 @@ function initApp() {
 
   // Load Google APIs
   loadGoogleLibraries();
+
+  // Start background auto-sync loop
+  startAutoSyncLoop();
 
   // Register Service Worker for PWA support
   if ('serviceWorker' in navigator) {
@@ -444,6 +449,7 @@ async function loadFolders() {
         safeStorage.setItem('folders_modified_time', file.modifiedTime);
       }
       safeStorage.setItem('folders_file_id', file.id);
+      renderSidebarFolders();
     } else {
       // Create a folders.json file
       console.log('folders.json not found, creating new one...');
@@ -466,6 +472,7 @@ async function loadFolders() {
       // Upload empty list content
       await uploadFileContent(newFile.id, []);
       saveFoldersCache();
+      renderSidebarFolders();
     }
     
     renderSidebarFolders();
@@ -1873,6 +1880,65 @@ async function refreshData() {
     console.error('Failed to refresh data:', err);
     showToast('Failed to sync. Please try again.');
   }
+}
+
+// --- Automatic Sync Engine (Real-time Focus & Periodic Polling) ---
+const SYNC_COOLDOWN_MS = 10000; // Throttle sync requests to at most once every 10 seconds
+
+function triggerBackgroundSync() {
+  if (!accessToken) return;
+  
+  const now = Date.now();
+  if (now - lastSyncTime < SYNC_COOLDOWN_MS) {
+    console.log('Sync request throttled.');
+    return;
+  }
+  
+  lastSyncTime = now;
+  console.log('Running automatic background sync...');
+  setSyncStatus('syncing', 'Checking for updates...');
+  
+  // Fetch folders and mind items in parallel
+  loadFolders().then(() => {
+    Promise.all([
+      loadSettingsFromDrive(),
+      loadMindItems()
+    ]).then(() => {
+      console.log('Background sync completed.');
+      setSyncStatus('synced', 'Synced');
+    }).catch(err => {
+      console.error('Background sync failed:', err);
+      setSyncStatus('synced', 'Sync Failed');
+    });
+  }).catch(err => {
+    console.error('Background sync folder load failed:', err);
+    setSyncStatus('synced', 'Sync Failed');
+  });
+}
+
+function startAutoSyncLoop() {
+  if (syncIntervalId) clearInterval(syncIntervalId);
+  
+  // 1. Periodic poll: every 60 seconds if the page is visible and active
+  syncIntervalId = setInterval(() => {
+    if (document.visibilityState === 'visible' && accessToken) {
+      triggerBackgroundSync();
+    }
+  }, 60000);
+  
+  // 2. Real-time Focus: instant sync when user returns to the tab/app
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && accessToken) {
+      triggerBackgroundSync();
+    }
+  });
+  
+  // 3. Focus listener for desktop window switching
+  window.addEventListener('focus', () => {
+    if (accessToken) {
+      triggerBackgroundSync();
+    }
+  });
 }
 
 
