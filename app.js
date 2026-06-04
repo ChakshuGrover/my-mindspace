@@ -891,6 +891,14 @@ function formatCardDate(isoString) {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+function formatLocalISO(isoString) {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return '';
+  const pad = (num) => String(num).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 function resetAISearch() {
   aiFilteredIds = null;
   if (aiSearchAbortController) {
@@ -934,18 +942,11 @@ async function executeAISearch(query) {
   }
 
   const notesIndex = loadedFiles.map(item => {
-    let localCreatedDate = '';
-    if (item.created_at) {
-      const d = new Date(item.created_at);
-      if (!isNaN(d.getTime())) {
-        localCreatedDate = d.toLocaleString();
-      }
-    }
     return {
       id: item.id,
       title: item.title || 'Untitled',
       type: item.type || 'note',
-      created_at: localCreatedDate || item.created_at || '',
+      created_at: formatLocalISO(item.created_at),
       summary: item.ai_analysis?.summary || '',
       tags: item.ai_analysis?.tags || [],
       vibe: item.ai_analysis?.vibe || '',
@@ -957,7 +958,7 @@ async function executeAISearch(query) {
     You are a highly advanced AI search engine running inside "MyMindSpace", a personal canvas for notes, articles/links, to-dos, and colors.
     Your task is to match the user's natural language search query against their stored items.
     
-    Today's Date and Time is: ${new Date().toString()}.
+    Today's Date and Time is: ${formatLocalISO(new Date())} (local time).
     User Search Query: "${query}"
     
     Rules for matching:
@@ -970,7 +971,9 @@ async function executeAISearch(query) {
     Below is the JSON list of stored items:
     ${JSON.stringify(notesIndex)}
     
-    CRITICAL: Respond STRICTLY in a JSON array of matching item IDs. Example format:
+    CRITICAL: If no items match the query or the date criteria (for example, if the query asks for "articles from yesterday" but there are no articles from yesterday in the index), you must return an empty JSON array []. Do not return other items.
+    
+    Respond STRICTLY in a JSON array of matching item IDs. Example format:
     ["item-12345-abcde", "item-67890-fghij"]
     Do not output markdown codeblocks, explanations, or any other content. Only output the JSON array.
   `;
