@@ -3,3 +3,8 @@
 .antigravity*
 scratch/
 *.log
+node_modules/
+venv/
+.npm-cache/
+package.json
+package-lock.json
