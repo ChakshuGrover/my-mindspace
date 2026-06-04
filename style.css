@@ -1366,6 +1366,7 @@ html {
     left: -290px; /* Hidden offscreen by default on mobile */
     width: 280px;
     height: 100vh;
+    background: var(--bg-secondary); /* Solid background on mobile to prevent overlapping content transparency */
     z-index: 100;
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.3);
