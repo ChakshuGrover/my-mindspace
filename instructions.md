@@ -22,7 +22,10 @@ Never rely on assumptions. Follow these steps for every change:
 
 Before making any changes:
 1. **Answer All Questions Directly**: If the user asks a question, answer it clearly and fully in the chat *first*, before discussing or initiating any changes.
-2. **Summarize Your Plan First**: Present a brief summary explaining *which* files you plan to edit, *what* modifications you will make, and *how* you plan to verify them.
+2. **Summarize Your Plan First (Standard Verbosity)**: Present a concise plan explaining:
+   * **Target Files**: List of files to be edited.
+   * **Proposed Changes**: A bulleted list of logical modifications.
+   * **Verification Plan**: How the changes will be tested and verified locally.
 3. **Don't Assume / Stop & Ask**: If the user's request is open-ended or multiple interpretations exist, present the options, outline trade-offs, and wait for confirmation. If something is unclear, stop, name what is confusing, and ask.
 
 ---
