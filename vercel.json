@@ -22,6 +22,14 @@
       "dest": "api/logout.js"
     },
     {
+      "src": "/api/get-token",
+      "dest": "api/get-token.js"
+    },
+    {
+      "src": "/api/add-silent",
+      "dest": "api/add-silent.js"
+    },
+    {
       "src": "/(.*)",
       "dest": "/$1"
     }

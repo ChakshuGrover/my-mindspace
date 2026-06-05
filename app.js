@@ -382,6 +382,37 @@ function setupEventListeners() {
   document.getElementById('btn-save-folder').addEventListener('click', saveNewFolder);
   document.getElementById('btn-save-add').addEventListener('click', saveNewItem);
 
+  const btnCopyShortcutKey = document.getElementById('btn-copy-shortcut-key');
+  if (btnCopyShortcutKey) {
+    btnCopyShortcutKey.addEventListener('click', async () => {
+      try {
+        btnCopyShortcutKey.textContent = 'Fetching Key...';
+        btnCopyShortcutKey.disabled = true;
+        const res = await fetch('/api/get-token');
+        if (!res.ok) {
+          throw new Error('Failed to fetch sharing key');
+        }
+        const data = await res.json();
+        if (data.refresh_token) {
+          await navigator.clipboard.writeText(data.refresh_token);
+          showToast('iOS Shortcut Sharing Key copied to clipboard!');
+          btnCopyShortcutKey.textContent = 'Copied!';
+        } else {
+          throw new Error('No refresh token returned');
+        }
+      } catch (err) {
+        console.error('Failed to copy sharing key:', err);
+        showToast('Failed to copy key. Please re-authenticate.');
+        btnCopyShortcutKey.textContent = 'Failed';
+      } finally {
+        setTimeout(() => {
+          btnCopyShortcutKey.textContent = 'Copy iOS Shortcut Sharing Key';
+          btnCopyShortcutKey.disabled = false;
+        }, 3000);
+      }
+    });
+  }
+
   // Search filter typing
   document.getElementById('search-input').addEventListener('input', (e) => {
     const query = e.target.value.trim();
