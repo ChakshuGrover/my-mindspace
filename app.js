@@ -575,7 +575,15 @@ async function loadMindItems() {
       });
       
       const loaded = await Promise.all(fetchPromises);
-      driveFiles = loaded.filter(x => x !== null);
+      
+      // Preserve any local placeholder items that were added after/during the fetch
+      const currentPlaceholders = driveFiles.filter(item => item.isPlaceholder);
+      
+      // Preserve any recently saved local items that might not have been in the fetched remote files list yet
+      const remoteIds = new Set(loaded.filter(x => x !== null).map(x => x.id));
+      const newlySavedItems = driveFiles.filter(item => !item.isPlaceholder && !remoteIds.has(item.id) && item._is_newly_saved);
+      
+      driveFiles = [...currentPlaceholders, ...newlySavedItems, ...loaded.filter(x => x !== null)];
       
       // Sort drive files by creation date (newest first)
       driveFiles.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
@@ -1414,6 +1422,7 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo =
 
     // Replace placeholder with final item
     newItem._drive_file_id = driveFile.id;
+    newItem._is_newly_saved = true;
     const index = driveFiles.findIndex(item => item.id === placeholderId);
     if (index !== -1) {
       driveFiles[index] = newItem;
@@ -1479,6 +1488,7 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo =
       const driveFile = await createRes.json();
       await uploadFileContent(driveFile.id, newItem);
       newItem._drive_file_id = driveFile.id;
+      newItem._is_newly_saved = true;
 
       // Replace placeholder
       const index = driveFiles.findIndex(item => item.id === placeholderId);
@@ -1549,6 +1559,7 @@ function renderGrid() {
       .filter(Boolean);
       
     filteredItems = filteredItems.filter(item => {
+      if (item.isPlaceholder) return true;
       if (currentFilter.startsWith('folder-')) {
         const folderId = currentFilter.substring(7);
         if (!item.folders || !item.folders.includes(folderId)) return false;
@@ -1559,6 +1570,7 @@ function renderGrid() {
     });
   } else {
     filteredItems = driveFiles.filter(item => {
+      if (item.isPlaceholder) return true;
       if (currentFilter.startsWith('folder-')) {
         const folderId = currentFilter.substring(7);
         if (!item.folders || !item.folders.includes(folderId)) return false;
@@ -2264,6 +2276,12 @@ const SYNC_COOLDOWN_MS = 10000; // Throttle sync requests to at most once every 
 
 function triggerBackgroundSync() {
   if (!accessToken) return;
+  
+  // Skip sync if an item is currently being saved to avoid race conditions
+  if (driveFiles.some(item => item.isPlaceholder)) {
+    console.log('Background sync skipped: an item is currently being saved/processed.');
+    return;
+  }
   
   const now = Date.now();
   if (now - lastSyncTime < SYNC_COOLDOWN_MS) {
