@@ -37,19 +37,34 @@ function parseHtmlMetadata(html, baseUrl) {
   
   const title = ogTitle || titleTag || baseUrl.split('/').pop() || baseUrl;
   const description = ogDesc || descVal || "";
-  
   // Helper to validate and resolve image URL
   const getValidUrl = (urlStr) => {
     if (!urlStr) return "";
     try {
       let cleanedUrl = urlStr.trim();
-      // Fix Shopify theme template issues where protocol-relative URLs miss the "//"
-      if (cleanedUrl.startsWith('http:') && !cleanedUrl.startsWith('http://')) {
-        cleanedUrl = 'http://' + baseUrl.split('/')[2] + '/' + cleanedUrl.substring(5);
-      } else if (cleanedUrl.startsWith('https:') && !cleanedUrl.startsWith('https://')) {
-        cleanedUrl = 'https://' + baseUrl.split('/')[2] + '/' + cleanedUrl.substring(6);
-      } else if (cleanedUrl.startsWith('//')) {
+      
+      // Fix protocol-relative double slashes
+      if (cleanedUrl.startsWith('//')) {
         cleanedUrl = 'https:' + cleanedUrl;
+      }
+      
+      // Check for missing double slashes (e.g., "http:products/img.jpg" or "https:cdn.shopify.com/...")
+      if (cleanedUrl.startsWith('http:') && !cleanedUrl.startsWith('http://')) {
+        const rest = cleanedUrl.substring(5);
+        if (rest.startsWith('/')) {
+          cleanedUrl = 'http:/' + rest;
+        } else {
+          // Malformed relative URL like "http:products/img.jpg"
+          return "";
+        }
+      } else if (cleanedUrl.startsWith('https:') && !cleanedUrl.startsWith('https://')) {
+        const rest = cleanedUrl.substring(6);
+        if (rest.startsWith('/')) {
+          cleanedUrl = 'https:/' + rest;
+        } else {
+          // Malformed relative URL like "https:products/img.jpg"
+          return "";
+        }
       }
       
       let resolved = new URL(cleanedUrl, baseUrl).href;
@@ -63,7 +78,39 @@ function parseHtmlMetadata(html, baseUrl) {
     }
   };
 
+  const isTinyOrIcon = (urlStr) => {
+    if (!urlStr) return true;
+    try {
+      const parsed = new URL(urlStr);
+      const width = parseInt(parsed.searchParams.get('width') || parsed.searchParams.get('w'), 10);
+      const height = parseInt(parsed.searchParams.get('height') || parsed.searchParams.get('h'), 10);
+      if ((!isNaN(width) && width < 200) || (!isNaN(height) && height < 200)) {
+        return true;
+      }
+      
+      // Check for Shopify filename suffix thumbnail size (e.g. "_20x", "_100x")
+      const shopifySizeMatch = urlStr.match(/_(\d+)x/);
+      if (shopifySizeMatch) {
+        const sizeVal = parseInt(shopifySizeMatch[1], 10);
+        if (sizeVal < 200) {
+          return true;
+        }
+      }
+      
+      const lower = urlStr.toLowerCase();
+      if (lower.includes('favicon') || lower.includes('logo') || lower.includes('icon') || lower.includes('svg') || lower.includes('pixel') || lower.includes('loader') || lower.includes('no-image')) {
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  };
+
   let image = getValidUrl(ogImage) || getValidUrl(twitterImage) || "";
+  if (image && isTinyOrIcon(image)) {
+    image = "";
+  }
 
   if (!image) {
     const linkTags = html.match(/<link\s+([^>]+)>/gi) || [];
@@ -76,7 +123,7 @@ function parseHtmlMetadata(html, baseUrl) {
       }
       if ((attrs.rel || "").toLowerCase() === 'image_src' && attrs.href) {
         const validated = getValidUrl(attrs.href);
-        if (validated) {
+        if (validated && !isTinyOrIcon(validated)) {
           image = validated;
           break;
         }
@@ -92,13 +139,9 @@ function parseHtmlMetadata(html, baseUrl) {
       const srcMatch = imgTag.match(/src=["']([^"']+)["']/i);
       if (srcMatch) {
         const validated = getValidUrl(srcMatch[1]);
-        if (validated) {
-          const lower = validated.toLowerCase();
-          // Avoid tiny icons, logos, trackers, SVGs
-          if (!lower.includes('favicon') && !lower.includes('logo') && !lower.includes('icon') && !lower.includes('svg') && !lower.includes('pixel') && !lower.includes('loader')) {
-            image = validated;
-            break;
-          }
+        if (validated && !isTinyOrIcon(validated)) {
+          image = validated;
+          break;
         }
       }
     }
