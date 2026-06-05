@@ -84,8 +84,22 @@ if (document.readyState === 'loading') {
 
 function initApp() {
   // Capture pending share parameters immediately on startup
-  const urlParams = new URLSearchParams(window.location.search);
-  const addUrl = urlParams.get('add');
+  let addUrl = null;
+  const search = window.location.search;
+  const addIndex = search.indexOf('add=');
+  if (addIndex !== -1) {
+    // Extract everything after 'add='
+    const rawAdd = search.substring(addIndex + 4);
+    try {
+      addUrl = decodeURIComponent(rawAdd);
+    } catch (e) {
+      addUrl = rawAdd;
+    }
+  } else {
+    const urlParams = new URLSearchParams(search);
+    addUrl = urlParams.get('add');
+  }
+
   if (addUrl) {
     safeStorage.setItem('mymind_pending_add', addUrl);
     // Remove query parameter from address bar immediately to keep URL clean
@@ -1333,22 +1347,53 @@ function handleShareQueryParams() {
   }
 }
 
+function extractAndCleanUrl(text) {
+  if (!text) return null;
+  let cleaned = text.trim();
+  
+  // If the text starts with http/https/www, let's see if it's a URL split by newlines/spaces
+  if (cleaned.startsWith('http://') || cleaned.startsWith('https://') || cleaned.startsWith('www.')) {
+    // Remove all whitespace/newlines to reconstruct the URL if it was wrapped
+    const potentialUrl = cleaned.replace(/[\s\r\n]+/g, '');
+    try {
+      // Validate that it looks like a valid URL
+      const testUrl = potentialUrl.startsWith('www.') ? 'https://' + potentialUrl : potentialUrl;
+      new URL(testUrl);
+      return potentialUrl;
+    } catch (e) {
+      // If rejoining fails, fallback to regex search
+    }
+  }
+
+  // Fallback: search for first URL in the text
+  const urlRegex = /(https?:\/\/[^\s\r\n]+|www\.[^\s\r\n]+)/i;
+  const match = cleaned.match(urlRegex);
+  if (match) {
+    let matchedUrl = match[1];
+    // If there's a trailing punctuation/bracket, clean it
+    matchedUrl = matchedUrl.replace(/[.,;:!?)\]]+$/, '');
+    return matchedUrl;
+  }
+  return null;
+}
+
 async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo = false) {
   try {
-    // Check if input is a URL to scrape metadata
-    const isUrl = !isTodo && (rawInputText.startsWith('http://') || rawInputText.startsWith('https://') || rawInputText.startsWith('www.'));
+    // Extract and clean the URL if present
+    const cleanedUrl = !isTodo ? extractAndCleanUrl(rawInputText) : null;
+    const isUrl = !!cleanedUrl;
     let aiInputText = rawInputText;
     let scrapedImage = null;
     let scrapedTitle = null;
 
     if (isUrl) {
       try {
-        const scrapeRes = await fetch(`/api/scrape?url=${encodeURIComponent(rawInputText)}`);
+        const scrapeRes = await fetch(`/api/scrape?url=${encodeURIComponent(cleanedUrl)}`);
         if (scrapeRes.ok) {
           const meta = await scrapeRes.json();
           scrapedImage = meta.image;
           scrapedTitle = meta.title;
-          aiInputText = `Webpage URL: ${rawInputText}\nTitle: ${meta.title}\nDescription: ${meta.description}`;
+          aiInputText = `Webpage URL: ${cleanedUrl}\nTitle: ${meta.title}\nDescription: ${meta.description}`;
         }
       } catch (e) {
         console.error('Failed to scrape URL metadata in background:', e);
@@ -1365,7 +1410,7 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo =
       type: isTodo ? 'todo' : ((aiParsed.type === 'note' && isUrl) ? 'article' : aiParsed.type),
       title: isTodo ? (rawInputText.split('\n')[0].trim().substring(0, 40) || 'To-Do List') : (aiParsed.title || scrapedTitle || 'Saved Item'),
       folders: folderId ? [folderId] : [],
-      url: (!isTodo && (aiParsed.type === 'article' || isUrl)) ? rawInputText : '',
+      url: (!isTodo && (aiParsed.type === 'article' || isUrl)) ? (cleanedUrl || rawInputText) : '',
       image: scrapedImage || '',
       ai_analysis: aiParsed.ai_analysis || {
         summary: 'Saved note.',
@@ -1441,14 +1486,15 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo =
     showToast('AI analysis failed. Using fallback.');
 
     // Fallback to local mock analysis
-    const fallback = mockAnalysis(rawInputText);
+    const cleanedUrl = !isTodo ? extractAndCleanUrl(rawInputText) : null;
+    const fallback = mockAnalysis(cleanedUrl || rawInputText);
     const newItem = {
       id: 'item-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
       created_at: new Date().toISOString(),
       type: isTodo ? 'todo' : fallback.type,
       title: isTodo ? (rawInputText.split('\n')[0].trim().substring(0, 40) || 'To-Do List') : fallback.title,
       folders: folderId ? [folderId] : [],
-      url: (!isTodo && fallback.type === 'article') ? rawInputText : '',
+      url: (!isTodo && fallback.type === 'article') ? (cleanedUrl || rawInputText) : '',
       ai_analysis: fallback.ai_analysis,
       content: {
         raw_text: rawInputText,
