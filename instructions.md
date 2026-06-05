@@ -16,15 +16,14 @@ Never rely on assumptions. Follow these steps for every change:
 
 ---
 
-## 2. Think Before Coding
+## 2. Answer Questions and Summarize Plans Before Implementing (Critical)
 
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
+**Never jump straight into writing code or executing write/execute tool calls without first answering the user's questions and summarizing your proposed plan.**
 
-Before implementing:
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
+Before making any changes:
+1. **Answer All Questions Directly**: If the user asks a question, answer it clearly and fully in the chat *first*, before discussing or initiating any changes.
+2. **Summarize Your Plan First**: Present a brief summary explaining *which* files you plan to edit, *what* modifications you will make, and *how* you plan to verify them.
+3. **Don't Assume / Stop & Ask**: If the user's request is open-ended or multiple interpretations exist, present the options, outline trade-offs, and wait for confirmation. If something is unclear, stop, name what is confusing, and ask.
 
 ---
 
