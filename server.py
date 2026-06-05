@@ -375,7 +375,158 @@ class MindProxyHandler(http.server.SimpleHTTPRequestHandler):
             super().do_GET()
 
     def do_POST(self):
-        if self.path.startswith('/api/gemini'):
+        if self.path.startswith('/api/auth'):
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            
+            try:
+                import os
+                parsed_body = json.loads(post_data.decode('utf-8'))
+                code = parsed_body.get('code')
+                redirect_uri = parsed_body.get('redirect_uri')
+                
+                if not code or not redirect_uri:
+                    self.send_response(400)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(b'{"error": "Missing code or redirect_uri"}')
+                    return
+                
+                client_id = os.environ.get('GOOGLE_CLIENT_ID', '345073896444-jvm03jjn5dn6pfh95d7jbtlh4shq4ooj.apps.googleusercontent.com')
+                client_secret = os.environ.get('GOOGLE_CLIENT_SECRET')
+                
+                if not client_secret:
+                    self.send_response(500)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(b'{"error": "GOOGLE_CLIENT_SECRET is missing."}')
+                    return
+                
+                # Exchange code for token
+                import urllib.request
+                import urllib.parse
+                token_url = 'https://oauth2.googleapis.com/token'
+                payload = {
+                    'code': code,
+                    'client_id': client_id,
+                    'client_secret': client_secret,
+                    'redirect_uri': redirect_uri,
+                    'grant_type': 'authorization_code'
+                }
+                
+                req_data = json.dumps(payload).encode('utf-8')
+                req = urllib.request.Request(
+                    token_url,
+                    data=req_data,
+                    headers={'Content-Type': 'application/json'},
+                    method='POST'
+                )
+                
+                try:
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        res_data = response.read()
+                        parsed_res = json.loads(res_data.decode('utf-8'))
+                        
+                        refresh_token = parsed_res.get('refresh_token')
+                        
+                        self.send_response(200)
+                        self.send_header('Content-Type', 'application/json')
+                        self.send_header('Access-Control-Allow-Origin', self.headers.get('Origin', '*'))
+                        self.send_header('Access-Control-Allow-Credentials', 'true')
+                        
+                        # Set httpOnly cookie
+                        if refresh_token:
+                            self.send_header('Set-Cookie', f'mymind_refresh_token={refresh_token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000')
+                            del parsed_res['refresh_token']
+                            
+                        self.end_headers()
+                        self.wfile.write(json.dumps(parsed_res).encode('utf-8'))
+                except urllib.error.HTTPError as e:
+                    self.send_response(e.code)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(e.read())
+            except Exception as e:
+                traceback.print_exc()
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+                
+        elif self.path.startswith('/api/refresh'):
+            try:
+                import os
+                cookie_header = self.headers.get('Cookie', '')
+                refresh_token = None
+                match = re.search(r'mymind_refresh_token=([^;]+)', cookie_header)
+                if match:
+                    refresh_token = match.group(1)
+                    
+                if not refresh_token:
+                    self.send_response(401)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(b'{"error": "No refresh token found."}')
+                    return
+                
+                client_id = os.environ.get('GOOGLE_CLIENT_ID', '345073896444-jvm03jjn5dn6pfh95d7jbtlh4shq4ooj.apps.googleusercontent.com')
+                client_secret = os.environ.get('GOOGLE_CLIENT_SECRET')
+                
+                if not client_secret:
+                    self.send_response(500)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(b'{"error": "GOOGLE_CLIENT_SECRET is missing."}')
+                    return
+                
+                # Exchange refresh token for access token
+                import urllib.request
+                token_url = 'https://oauth2.googleapis.com/token'
+                payload = {
+                    'refresh_token': refresh_token,
+                    'client_id': client_id,
+                    'client_secret': client_secret,
+                    'grant_type': 'refresh_token'
+                }
+                
+                req_data = json.dumps(payload).encode('utf-8')
+                req = urllib.request.Request(
+                    token_url,
+                    data=req_data,
+                    headers={'Content-Type': 'application/json'},
+                    method='POST'
+                )
+                
+                try:
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        res_data = response.read()
+                        self.send_response(200)
+                        self.send_header('Content-Type', 'application/json')
+                        self.send_header('Access-Control-Allow-Origin', self.headers.get('Origin', '*'))
+                        self.send_header('Access-Control-Allow-Credentials', 'true')
+                        self.end_headers()
+                        self.wfile.write(res_data)
+                except urllib.error.HTTPError as e:
+                    self.send_response(e.code)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(e.read())
+            except Exception as e:
+                traceback.print_exc()
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+        elif self.path.startswith('/api/logout'):
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', self.headers.get('Origin', '*'))
+            self.send_header('Access-Control-Allow-Credentials', 'true')
+            self.send_header('Set-Cookie', 'mymind_refresh_token=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT')
+            self.end_headers()
+            self.wfile.write(b'{"success": true}')
+            
+        elif self.path.startswith('/api/gemini'):
             parsed_url = urlparse(self.path)
             params = parse_qs(parsed_url.query)
             
@@ -426,6 +577,22 @@ class MindProxyHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": str(e)}).encode())
         else:
             super().do_POST()
+
+def load_env_local():
+    import os
+    env_path = '.env.local'
+    if os.path.exists(env_path):
+        with open(env_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    parts = line.split('=', 1)
+                    key = parts[0].strip()
+                    val = parts[1].strip().strip('"').strip("'")
+                    if key and key not in os.environ:
+                        os.environ[key] = val
+
+load_env_local()
 
 socketserver.TCPServer.allow_reuse_address = True
 

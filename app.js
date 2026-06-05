@@ -16,7 +16,7 @@ try {
 }
 
 // --- Constants & Global State ---
-let tokenClient;
+let codeClient;
 let accessToken = null;
 let userEmail = null;
 let googleUserId = null;
@@ -169,33 +169,32 @@ function loadGoogleLibraries() {
 
 function initGoogleIdentityClient() {
   try {
-    tokenClient = google.accounts.oauth2.initTokenClient({
+    codeClient = google.accounts.oauth2.initCodeClient({
       client_id: safeStorage.getItem(STORAGE_KEYS.CLIENT_ID),
       scope: 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
-      callback: (tokenResponse) => {
-        if (tokenResponse.error !== undefined) {
-          console.error('Oauth authorization error:', tokenResponse.error);
+      ux_mode: 'popup',
+      redirect_uri: 'postmessage',
+      callback: async (authResponse) => {
+        if (authResponse.error !== undefined) {
+          console.error('Oauth authorization error:', authResponse.error);
           showToast('Authentication failed or expired.');
           logout();
           return;
         }
-        accessToken = tokenResponse.access_token;
-        const expiresAt = Date.now() + (tokenResponse.expires_in || 3600) * 1000;
-        safeStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
-        safeStorage.setItem('mymind_token_expires_at', expiresAt);
         
-        hideSessionExpiredBanner();
-        
-        if (onAuthSuccessCallback) {
-          const cb = onAuthSuccessCallback;
-          onAuthSuccessCallback = null;
-          cb();
-        } else {
-          verifyAndFetchData();
+        if (authResponse.code) {
+          setSyncStatus('syncing', 'Authenticating...');
+          try {
+            await exchangeCodeForToken(authResponse.code);
+          } catch (err) {
+            console.error('Failed to exchange code:', err);
+            showToast('Authentication failed: ' + err.message);
+            logout();
+          }
         }
       }
     });
-    console.log('Google Identity Client Initialized');
+    console.log('Google Identity Code Client Initialized');
 
     // Auto-connect if access token is already saved
     const savedToken = safeStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
@@ -213,12 +212,81 @@ function initGoogleIdentityClient() {
   }
 }
 
+async function exchangeCodeForToken(code) {
+  const res = await fetch('/api/auth', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    credentials: 'include',
+    body: JSON.stringify({
+      code: code,
+      redirect_uri: 'postmessage'
+    })
+  });
+  
+  if (!res.ok) {
+    let errData;
+    try {
+      errData = await res.json();
+    } catch(e) {}
+    const errMsg = errData?.error || `HTTP error ${res.status}`;
+    throw new Error(errMsg);
+  }
+  
+  const data = await res.json();
+  accessToken = data.access_token;
+  const expiresAt = Date.now() + (data.expires_in || 3600) * 1000;
+  
+  safeStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+  safeStorage.setItem('mymind_token_expires_at', expiresAt);
+  
+  hideSessionExpiredBanner();
+  
+  if (onAuthSuccessCallback) {
+    const cb = onAuthSuccessCallback;
+    onAuthSuccessCallback = null;
+    cb();
+  } else {
+    verifyAndFetchData();
+  }
+}
+
+async function refreshAccessTokenFromServer() {
+  const res = await fetch('/api/refresh', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    credentials: 'include'
+  });
+  
+  if (!res.ok) {
+    let errData;
+    try {
+      errData = await res.json();
+    } catch(e) {}
+    const errMsg = errData?.error || `HTTP error ${res.status}`;
+    throw new Error(errMsg);
+  }
+  
+  const data = await res.json();
+  accessToken = data.access_token;
+  const expiresAt = Date.now() + (data.expires_in || 3600) * 1000;
+  
+  safeStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+  safeStorage.setItem('mymind_token_expires_at', expiresAt);
+  
+  hideSessionExpiredBanner();
+  return accessToken;
+}
+
 // --- Event Listeners Setup ---
 function setupEventListeners() {
   // Login / Logout Buttons
   document.getElementById('btn-login').addEventListener('click', () => {
-    if (tokenClient) {
-      tokenClient.requestAccessToken();
+    if (codeClient) {
+      codeClient.requestCode();
     } else {
       showToast('Authentication library loading. Please try again in a moment.');
     }
@@ -301,8 +369,8 @@ function setupEventListeners() {
   const btnReconnect = document.getElementById('btn-reconnect');
   if (btnReconnect) {
     btnReconnect.addEventListener('click', () => {
-      if (tokenClient) {
-        tokenClient.requestAccessToken();
+      if (codeClient) {
+        codeClient.requestCode();
       } else {
         showToast('Google identity client not initialized. Please refresh.');
       }
@@ -2348,12 +2416,16 @@ async function syncSettingsToDrive(geminiKey) {
   }
 }
 
-// --- App Control Utilities ---
 function logout() {
   safeStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
   accessToken = null;
   driveFiles = [];
   folders = [];
+  
+  // Call server to clear HTTP-Only cookie
+  fetch('/api/logout', { method: 'POST', credentials: 'include' })
+    .catch(err => console.warn('Failed to clear cookie on logout:', err));
+
   showLandingPage();
   showToast('Successfully logged out.');
 }
@@ -2488,26 +2560,33 @@ function startAutoSyncLoop() {
   });
 }
 
-// --- Token Lifecycle Refresh Helper ---
 function ensureValidToken(callback, forceLandingPageOnExpiry = false) {
   const expiresAt = parseInt(safeStorage.getItem('mymind_token_expires_at') || '0', 10);
   
-  // If no token exists, or it expires within the next 5 minutes, trigger re-authentication
-  if (!accessToken || Date.now() + 300000 > expiresAt) {
-    console.log('Google Access Token is expired or expiring soon.');
-    
-    if (forceLandingPageOnExpiry) {
-      console.log('Token expired on startup. Redirecting to landing page for manual sign-in.');
-      logout();
-    } else {
-      console.log('Token expired in-app. Showing Session Expired banner.');
-      onAuthSuccessCallback = callback;
-      showSessionExpiredBanner();
-    }
-  } else {
-    // Token is still valid, execute callback immediately
+  if (accessToken && Date.now() + 300000 <= expiresAt) {
     callback();
+    return;
   }
+  
+  console.log('Google Access Token is expired or expiring soon. Attempting silent refresh...');
+  
+  refreshAccessTokenFromServer()
+    .then(() => {
+      console.log('Silent token refresh successful.');
+      callback();
+    })
+    .catch((err) => {
+      console.warn('Silent token refresh failed:', err);
+      
+      if (forceLandingPageOnExpiry) {
+        console.log('Token expired on startup and silent refresh failed. Redirecting to landing page.');
+        logout();
+      } else {
+        console.log('Token expired in-app and silent refresh failed. Showing Session Expired banner.');
+        onAuthSuccessCallback = callback;
+        showSessionExpiredBanner();
+      }
+    });
 }
 
 function showSessionExpiredBanner() {
