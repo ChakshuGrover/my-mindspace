@@ -1694,7 +1694,7 @@ function renderGrid() {
         `;
       }
       else if (item.type === 'article') {
-        const thumbImg = item.image ? `<img class="card-article-thumb" src="${item.image}" alt="${item.title}" />` : '';
+        const thumbImg = item.image ? `<img class="card-article-thumb" src="${item.image}" alt="${item.title}" onerror="this.style.display='none';" />` : '';
         card.innerHTML = `
           ${thumbImg}
           <div class="card-article-content">
@@ -1856,7 +1856,7 @@ function showDetailModal(item) {
     });
   }
   else if (item.type === 'article') {
-    const detailImg = item.image ? `<img class="detail-article-image" src="${item.image}" alt="${item.title}" style="inline-size: 100%; block-size: auto; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 12px; margin-block-end: 20px;" />` : '';
+    const detailImg = item.image ? `<img class="detail-article-image" src="${item.image}" alt="${item.title}" style="inline-size: 100%; block-size: auto; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 12px; margin-block-end: 20px;" onerror="this.style.display='none';" />` : '';
     contentContainer.innerHTML = `
       <div class="detail-content">
         ${detailImg}
