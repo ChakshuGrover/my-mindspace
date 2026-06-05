@@ -955,7 +955,7 @@ html {
 
 @media (max-width: 768px) {
   .modal {
-    padding: 12px;
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 12px calc(12px + env(safe-area-inset-bottom, 0px)) 12px;
   }
 }
 
@@ -996,8 +996,8 @@ html {
 @media (max-width: 768px) {
   .modal-panel {
     border-radius: var(--radius-md);
-    max-block-size: calc(100vh - 24px);
-    max-block-size: calc(100dvh - 24px);
+    max-block-size: calc(100vh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-block-size: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -1462,6 +1462,7 @@ html {
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.3);
     border-inline-end: 1px solid var(--border-glass-hover);
     display: flex; /* Ensure display is flex overriding display: none */
+    padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: calc(32px + env(safe-area-inset-bottom)); /* Offset home indicator and dynamic bottom bars */
   }
 
