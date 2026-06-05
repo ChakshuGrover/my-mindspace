@@ -405,6 +405,31 @@ function closeModal(modalId) {
   }
 }
 
+let confirmResolver = null;
+
+function showConfirm(title, message, confirmBtnText = 'Confirm', cancelBtnText = 'Cancel') {
+  return new Promise((resolve) => {
+    confirmResolver = resolve;
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-message').textContent = message;
+    
+    const okBtn = document.getElementById('confirm-ok-btn');
+    const cancelBtn = document.getElementById('confirm-cancel-btn');
+    if (okBtn) okBtn.textContent = confirmBtnText;
+    if (cancelBtn) cancelBtn.textContent = cancelBtnText;
+    
+    openModal('confirm-modal');
+  });
+}
+
+window.closeConfirmModal = function(result) {
+  closeModal('confirm-modal');
+  if (confirmResolver) {
+    confirmResolver(result);
+    confirmResolver = null;
+  }
+};
+
 function toggleMobileSidebar() {
   const sidebar = document.querySelector('.sidebar');
   const overlay = document.getElementById('sidebar-overlay');
@@ -728,8 +753,14 @@ function renderSidebarFolders() {
   });
 }
 
-function confirmDeleteFolder(folderId, folderName) {
-  if (confirm(`Are you sure you want to delete the folder "${folderName}"? All notes inside will be moved to your Inbox.`)) {
+async function confirmDeleteFolder(folderId, folderName) {
+  const confirmed = await showConfirm(
+    'Delete Folder',
+    `Are you sure you want to delete the folder "${folderName}"? All notes inside will be moved to your Inbox.`,
+    'Delete',
+    'Cancel'
+  );
+  if (confirmed) {
     deleteFolder(folderId, folderName);
   }
 }
@@ -1582,9 +1613,14 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo =
   }
 }
 
-// --- Item Deletion ---
 async function deleteItem(itemId, driveFileId) {
-  if (!confirm('Are you sure you want to forget this from your mind?')) return;
+  const confirmed = await showConfirm(
+    'Forget Item',
+    'Are you sure you want to forget this from your mind?',
+    'Forget',
+    'Cancel'
+  );
+  if (!confirmed) return;
 
   closeModal('detail-modal');
   setSyncStatus('syncing', 'Deleting...');
