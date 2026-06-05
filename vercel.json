@@ -10,6 +10,18 @@
       "dest": "api/scrape.js"
     },
     {
+      "src": "/api/auth",
+      "dest": "api/auth.js"
+    },
+    {
+      "src": "/api/refresh",
+      "dest": "api/refresh.js"
+    },
+    {
+      "src": "/api/logout",
+      "dest": "api/logout.js"
+    },
+    {
       "src": "/(.*)",
       "dest": "/$1"
     }
