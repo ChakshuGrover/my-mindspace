@@ -49,7 +49,30 @@ def parse_html_metadata(html, base_url):
     
     title = og_title or title_tag or base_url.split('/')[-1] or base_url
     description = og_desc or desc_val or ""
-    image = og_image or twitter_image or ""
+    
+    def get_valid_url(url_str):
+        if not url_str:
+            return ""
+        url_str = url_str.strip()
+        from urllib.parse import urlparse
+        # Fix missing double slashes in http: / https:
+        if url_str.startswith('http:') and not url_str.startswith('http://'):
+            url_str = 'http://' + urlparse(base_url).netloc + '/' + url_str[5:]
+        elif url_str.startswith('https:') and not url_str.startswith('https://'):
+            url_str = 'https://' + urlparse(base_url).netloc + '/' + url_str[6:]
+        elif url_str.startswith('//'):
+            url_str = 'https:' + url_str
+            
+        try:
+            resolved = urljoin(base_url, url_str)
+            parsed = urlparse(resolved)
+            if '.' not in parsed.netloc and parsed.netloc != 'localhost':
+                return ""
+            return resolved
+        except Exception:
+            return ""
+
+    image = get_valid_url(og_image) or get_valid_url(twitter_image) or ""
     
     # Try finding link rel="image_src"
     if not image:
@@ -61,19 +84,27 @@ def parse_html_metadata(html, base_url):
                 val = attr.group(2) or attr.group(3) or ""
                 attrs[key] = val
             if attrs.get('rel', '').lower() == 'image_src' and attrs.get('href'):
-                image = attrs.get('href')
-                break
+                validated = get_valid_url(attrs.get('href'))
+                if validated:
+                    image = validated
+                    break
                 
     # Try body images
     if not image:
         body_match = re.search(r'<body[^>]*>(.*?)</body>', html, re.IGNORECASE | re.DOTALL)
         body_content = body_match.group(1) if body_match else html
-        img_match = re.search(r'<img\s+[^>]*src=["\']([^"\']+)["\']', body_content, re.IGNORECASE)
-        if img_match:
-            image = img_match.group(1)
+        img_matches = re.findall(r'<img\s+[^>]*src=["\']([^"\']+)["\']', body_content, re.IGNORECASE)
+        for img in img_matches:
+            validated = get_valid_url(img)
+            if validated:
+                lower = validated.lower()
+                if 'favicon' not in lower and 'logo' not in lower and 'icon' not in lower and 'svg' not in lower and 'pixel' not in lower and 'loader' not in lower:
+                    image = validated
+                    break
             
-    if image:
-        image = urljoin(base_url, image)
+    # Fallback to Thum.io screenshot API if no valid main content image was found
+    if not image:
+        image = f"https://image.thum.io/get/width/600/crop/800/maxAge/24/{base_url}"
         
     return {
         "title": html_lib.unescape(title).strip(),

@@ -37,7 +37,33 @@ function parseHtmlMetadata(html, baseUrl) {
   
   const title = ogTitle || titleTag || baseUrl.split('/').pop() || baseUrl;
   const description = ogDesc || descVal || "";
-  let image = ogImage || twitterImage || "";
+  
+  // Helper to validate and resolve image URL
+  const getValidUrl = (urlStr) => {
+    if (!urlStr) return "";
+    try {
+      let cleanedUrl = urlStr.trim();
+      // Fix Shopify theme template issues where protocol-relative URLs miss the "//"
+      if (cleanedUrl.startsWith('http:') && !cleanedUrl.startsWith('http://')) {
+        cleanedUrl = 'http://' + baseUrl.split('/')[2] + '/' + cleanedUrl.substring(5);
+      } else if (cleanedUrl.startsWith('https:') && !cleanedUrl.startsWith('https://')) {
+        cleanedUrl = 'https://' + baseUrl.split('/')[2] + '/' + cleanedUrl.substring(6);
+      } else if (cleanedUrl.startsWith('//')) {
+        cleanedUrl = 'https:' + cleanedUrl;
+      }
+      
+      let resolved = new URL(cleanedUrl, baseUrl).href;
+      const parsed = new URL(resolved);
+      if (!parsed.hostname.includes('.') && parsed.hostname !== 'localhost') {
+        return "";
+      }
+      return resolved;
+    } catch (e) {
+      return "";
+    }
+  };
+
+  let image = getValidUrl(ogImage) || getValidUrl(twitterImage) || "";
 
   if (!image) {
     const linkTags = html.match(/<link\s+([^>]+)>/gi) || [];
@@ -49,8 +75,11 @@ function parseHtmlMetadata(html, baseUrl) {
         attrs[match[1].toLowerCase()] = match[2] || match[3] || "";
       }
       if ((attrs.rel || "").toLowerCase() === 'image_src' && attrs.href) {
-        image = attrs.href;
-        break;
+        const validated = getValidUrl(attrs.href);
+        if (validated) {
+          image = validated;
+          break;
+        }
       }
     }
   }
@@ -58,18 +87,26 @@ function parseHtmlMetadata(html, baseUrl) {
   if (!image) {
     const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
     const bodyContent = bodyMatch ? bodyMatch[1] : html;
-    const imgMatch = bodyContent.match(/<img\s+[^>]*src=["']([^"']+)["']/i);
-    if (imgMatch) {
-      image = imgMatch[1];
+    const imgMatches = bodyContent.match(/<img\s+[^>]*src=["']([^"']+)["']/gi) || [];
+    for (const imgTag of imgMatches) {
+      const srcMatch = imgTag.match(/src=["']([^"']+)["']/i);
+      if (srcMatch) {
+        const validated = getValidUrl(srcMatch[1]);
+        if (validated) {
+          const lower = validated.toLowerCase();
+          // Avoid tiny icons, logos, trackers, SVGs
+          if (!lower.includes('favicon') && !lower.includes('logo') && !lower.includes('icon') && !lower.includes('svg') && !lower.includes('pixel') && !lower.includes('loader')) {
+            image = validated;
+            break;
+          }
+        }
+      }
     }
   }
 
-  if (image) {
-    try {
-      image = new URL(image, baseUrl).href;
-    } catch (e) {
-      // Ignore URL parsing errors
-    }
+  // Fallback to Thum.io screenshot API if no valid main content image was found
+  if (!image) {
+    image = `https://image.thum.io/get/width/600/crop/800/maxAge/24/${baseUrl}`;
   }
 
   const unescapeHtml = (str) => {
