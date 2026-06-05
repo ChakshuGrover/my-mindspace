@@ -148,57 +148,156 @@ def parse_html_metadata(html, base_url):
     title = og_title or title_tag or base_url.split('/')[-1] or base_url
     description = og_desc or desc_val or ""
     
-    def get_valid_url(url_str):
-        if not url_str:
-            return ""
-        url_str = url_str.strip()
-        from urllib.parse import urlparse
-        # Fix missing double slashes in http: / https:
-        if url_str.startswith('http:') and not url_str.startswith('http://'):
-            url_str = 'http://' + urlparse(base_url).netloc + '/' + url_str[5:]
-        elif url_str.startswith('https:') and not url_str.startswith('https://'):
-            url_str = 'https://' + urlparse(base_url).netloc + '/' + url_str[6:]
-        elif url_str.startswith('//'):
-            url_str = 'https:' + url_str
+    candidate_images = []
+
+    def add_candidate(src, base_score, source_tag=None):
+        if not src:
+            return
+        resolved = src.strip()
+        if resolved.startswith('//'):
+            resolved = 'https:' + resolved
+        elif resolved.startswith('/'):
+            resolved = urljoin(base_url, resolved)
+        elif not resolved.startswith('http://') and not resolved.startswith('https://'):
+            resolved = urljoin(base_url, resolved)
             
         try:
-            resolved = urljoin(base_url, url_str)
-            parsed = urlparse(resolved)
-            if '.' not in parsed.netloc and parsed.netloc != 'localhost':
-                return ""
-            return resolved
+            from urllib.parse import urlparse
+            parsed_url = urlparse(resolved)
+            if '.' not in parsed_url.netloc and parsed_url.netloc != 'localhost':
+                return
+            
+            candidate_images.append({
+                'url': resolved,
+                'baseScore': base_score,
+                'attrs': source_tag or {}
+            })
         except Exception:
-            return ""
+            pass
 
-    image = get_valid_url(og_image) or get_valid_url(twitter_image) or ""
-    
-    # Try finding link rel="image_src"
-    if not image:
-        link_tags = re.findall(r'<link\s+([^>]+)>', html, re.IGNORECASE)
-        for tag in link_tags:
-            attrs = {}
-            for attr in re.finditer(r'([a-zA-Z0-9:-]+)\s*=\s*(?:["\']([^"\']*)["\']|([^\s>]+))', tag):
-                key = attr.group(1).lower()
-                val = attr.group(2) or attr.group(3) or ""
-                attrs[key] = val
-            if attrs.get('rel', '').lower() == 'image_src' and attrs.get('href'):
-                validated = get_valid_url(attrs.get('href'))
-                if validated:
-                    image = validated
-                    break
-                
-    # Try body images
-    if not image:
-        body_match = re.search(r'<body[^>]*>(.*?)</body>', html, re.IGNORECASE | re.DOTALL)
-        body_content = body_match.group(1) if body_match else html
-        img_matches = re.findall(r'<img\s+[^>]*src=["\']([^"\']+)["\']', body_content, re.IGNORECASE)
-        for img in img_matches:
-            validated = get_valid_url(img)
-            if validated:
-                lower = validated.lower()
-                if 'favicon' not in lower and 'logo' not in lower and 'icon' not in lower and 'svg' not in lower and 'pixel' not in lower and 'loader' not in lower:
-                    image = validated
-                    break
+    # 1. Add OG / Twitter images
+    add_candidate(og_image, 100)
+    add_candidate(twitter_image, 100)
+
+    # 2. Add link rel="image_src"
+    link_tags = re.findall(r'<link\s+([^>]+)>', html, re.IGNORECASE)
+    for tag in link_tags:
+        attrs = {}
+        for attr in re.finditer(r'([a-zA-Z0-9:-]+)\s*=\s*(?:["\']([^"\']*)["\']|([^\s>]+))', tag):
+            key = attr.group(1).lower()
+            val = attr.group(2) or attr.group(3) or ""
+            attrs[key] = val
+        if attrs.get('rel', '').lower() == 'image_src' and attrs.get('href'):
+            add_candidate(attrs.get('href'), 80)
+
+    # 3. Add body images
+    body_match = re.search(r'<body[^>]*>(.*?)</body>', html, re.IGNORECASE | re.DOTALL)
+    body_content = body_match.group(1) if body_match else html
+    img_tags = re.findall(r'<img\s+([^>]+)>', body_content, re.IGNORECASE)
+    for tag in img_tags:
+        attrs = {}
+        for attr in re.finditer(r'([a-zA-Z0-9:-]+)\s*=\s*(?:["\']([^"\']*)["\']|([^\s>]+))', tag):
+            key = attr.group(1).lower()
+            val = attr.group(2) or attr.group(3) or ""
+            attrs[key] = val
+        if attrs.get('src'):
+            add_candidate(attrs.get('src'), 50, attrs)
+
+    # Keywords for scoring
+    keywords = []
+    if title:
+        for w in re.findall(r'[a-zA-Z0-9]+', title):
+            if len(w) >= 3:
+                keywords.append(w.lower())
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(base_url)
+        sub = parsed.netloc.split('.')[0]
+        if sub and sub != 'www' and len(sub) >= 2:
+            keywords.append(sub.lower())
+        for w in re.findall(r'[a-zA-Z0-9]+', parsed.path):
+            lower = w.lower()
+            if len(lower) >= 3 and lower not in ['learn', 'home', 'section', 'lesson', 'course']:
+                keywords.append(lower)
+    except Exception:
+        pass
+    keywords = list(set(keywords))
+
+    # Score candidates
+    scored_candidates = []
+    for candidate in candidate_images:
+        lower = candidate['url'].lower()
+        
+        if any(x in lower for x in ['pixel', 'loader', 'spacer', 'no-image', 'placeholder']):
+            continue
+
+        width = None
+        height = None
+        attrs = candidate['attrs']
+        
+        if attrs.get('width'):
+            try:
+                width = int(attrs.get('width'))
+            except Exception:
+                pass
+        if attrs.get('height'):
+            try:
+                height = int(attrs.get('height'))
+            except Exception:
+                pass
+
+        try:
+            from urllib.parse import urlparse, parse_qs
+            parsed_url = urlparse(candidate['url'])
+            params = parse_qs(parsed_url.query)
+            if 'width' in params or 'w' in params:
+                val = params.get('width') or params.get('w')
+                if val:
+                    width = int(val[0])
+            if 'height' in params or 'h' in params:
+                val = params.get('height') or params.get('h')
+                if val:
+                    height = int(val[0])
+        except Exception:
+            pass
+
+        shopify_size_match = re.search(r'_(\d+)x', candidate['url'])
+        if shopify_size_match:
+            size_val = int(shopify_size_match.group(1))
+            width = size_val
+            height = size_val
+
+        if (width is not None and width < 200) or (height is not None and height < 200):
+            continue
+
+        check_str = f"{attrs.get('alt', '')} {attrs.get('class', '')} {attrs.get('id', '')} {attrs.get('aria-label', '')} {lower}".lower()
+        
+        if any(x in check_str for x in ['favicon', 'avatar', 'icon', 'loader']) or lower.endswith('.svg'):
+            continue
+
+        score = candidate['baseScore']
+
+        if 'logo' in check_str or 'brand' in check_str:
+            score -= 20
+
+        for word in keywords:
+            if word in check_str:
+                score += 30
+
+        if any(x in lower for x in ['banner', 'hero', 'cover']):
+            score += 30
+        if any(x in lower for x in ['desktop', '-web', '_web']):
+            score += 20
+        if any(x in lower for x in ['mobile', '-thumb', '_thumb']):
+            score -= 15
+
+        scored_candidates.append((candidate['url'], score))
+
+    image = ""
+    if scored_candidates:
+        scored_candidates.sort(key=lambda x: x[1], reverse=True)
+        if scored_candidates[0][1] >= 30:
+            image = scored_candidates[0][0]
             
     # Fallback to homepage smart logo/banner or brand favicon if no valid main content image was found
     if not image:

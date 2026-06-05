@@ -174,113 +174,163 @@ async function parseHtmlMetadata(html, baseUrl) {
   
   const title = ogTitle || titleTag || baseUrl.split('/').pop() || baseUrl;
   const description = ogDesc || descVal || "";
-  // Helper to validate and resolve image URL
-  const getValidUrl = (urlStr) => {
-    if (!urlStr) return "";
+  const candidateImages = [];
+
+  // Helper to add a candidate
+  const addCandidate = (src, baseScore, sourceTag = {}) => {
+    if (!src) return;
+    let resolved = src.trim();
     try {
-      let cleanedUrl = urlStr.trim();
-      
-      // Fix protocol-relative double slashes
-      if (cleanedUrl.startsWith('//')) {
-        cleanedUrl = 'https:' + cleanedUrl;
+      // Fix relative/protocol-relative slashes
+      if (resolved.startsWith('//')) {
+        resolved = 'https:' + resolved;
+      } else if (resolved.startsWith('/')) {
+        resolved = new URL(resolved, baseUrl).href;
+      } else if (!resolved.startsWith('http://') && !resolved.startsWith('https://')) {
+        resolved = new URL(resolved, baseUrl).href;
       }
       
-      // Check for missing double slashes (e.g., "http:products/img.jpg" or "https:cdn.shopify.com/...")
-      if (cleanedUrl.startsWith('http:') && !cleanedUrl.startsWith('http://')) {
-        const rest = cleanedUrl.substring(5);
-        if (rest.startsWith('/')) {
-          cleanedUrl = 'http:/' + rest;
-        } else {
-          // Malformed relative URL like "http:products/img.jpg"
-          return "";
-        }
-      } else if (cleanedUrl.startsWith('https:') && !cleanedUrl.startsWith('https://')) {
-        const rest = cleanedUrl.substring(6);
-        if (rest.startsWith('/')) {
-          cleanedUrl = 'https:/' + rest;
-        } else {
-          // Malformed relative URL like "https:products/img.jpg"
-          return "";
-        }
+      const parsedUrl = new URL(resolved);
+      if (!parsedUrl.hostname.includes('.') && parsedUrl.hostname !== 'localhost') {
+        return;
       }
       
-      let resolved = new URL(cleanedUrl, baseUrl).href;
-      const parsed = new URL(resolved);
-      if (!parsed.hostname.includes('.') && parsed.hostname !== 'localhost') {
-        return "";
-      }
-      return resolved;
-    } catch (e) {
-      return "";
-    }
+      candidateImages.push({
+        url: resolved,
+        baseScore,
+        attrs: sourceTag
+      });
+    } catch (e) {}
   };
 
-  const isTinyOrIcon = (urlStr) => {
-    if (!urlStr) return true;
-    try {
-      const parsed = new URL(urlStr);
-      const width = parseInt(parsed.searchParams.get('width') || parsed.searchParams.get('w'), 10);
-      const height = parseInt(parsed.searchParams.get('height') || parsed.searchParams.get('h'), 10);
-      if ((!isNaN(width) && width < 200) || (!isNaN(height) && height < 200)) {
-        return true;
-      }
-      
-      // Check for Shopify filename suffix thumbnail size (e.g. "_20x", "_100x")
-      const shopifySizeMatch = urlStr.match(/_(\d+)x/);
-      if (shopifySizeMatch) {
-        const sizeVal = parseInt(shopifySizeMatch[1], 10);
-        if (sizeVal < 200) {
-          return true;
-        }
-      }
-      
-      const lower = urlStr.toLowerCase();
-      if (lower.includes('favicon') || lower.includes('logo') || lower.includes('icon') || lower.includes('svg') || lower.includes('pixel') || lower.includes('loader') || lower.includes('no-image')) {
-        return true;
-      }
-      return false;
-    } catch (e) {
-      return false;
+  // 1. Add OG / Twitter images
+  addCandidate(ogImage, 100);
+  addCandidate(twitterImage, 100);
+
+  // 2. Add link rel="image_src"
+  const linkTags = html.match(/<link\s+([^>]+)>/gi) || [];
+  for (const tag of linkTags) {
+    const attrs = {};
+    const attrRegex = /([a-z0-9:-]+)\s*=\s*(?:["']([^"']*)["']|([^\s>]+))/gi;
+    let match;
+    while ((match = attrRegex.exec(tag)) !== null) {
+      attrs[match[1].toLowerCase()] = match[2] || match[3] || "";
     }
-  };
-
-  let image = getValidUrl(ogImage) || getValidUrl(twitterImage) || "";
-  if (image && isTinyOrIcon(image)) {
-    image = "";
-  }
-
-  if (!image) {
-    const linkTags = html.match(/<link\s+([^>]+)>/gi) || [];
-    for (const tag of linkTags) {
-      const attrs = {};
-      const attrRegex = /([a-z0-9:-]+)\s*=\s*(?:["']([^"']*)["']|([^\s>]+))/gi;
-      let match;
-      while ((match = attrRegex.exec(tag)) !== null) {
-        attrs[match[1].toLowerCase()] = match[2] || match[3] || "";
-      }
-      if ((attrs.rel || "").toLowerCase() === 'image_src' && attrs.href) {
-        const validated = getValidUrl(attrs.href);
-        if (validated && !isTinyOrIcon(validated)) {
-          image = validated;
-          break;
-        }
-      }
+    if ((attrs.rel || "").toLowerCase() === 'image_src' && attrs.href) {
+      addCandidate(attrs.href, 80);
     }
   }
 
-  if (!image) {
-    const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-    const bodyContent = bodyMatch ? bodyMatch[1] : html;
-    const imgMatches = bodyContent.match(/<img\s+[^>]*src=["']([^"']+)["']/gi) || [];
-    for (const imgTag of imgMatches) {
-      const srcMatch = imgTag.match(/src=["']([^"']+)["']/i);
-      if (srcMatch) {
-        const validated = getValidUrl(srcMatch[1]);
-        if (validated && !isTinyOrIcon(validated)) {
-          image = validated;
-          break;
-        }
+  // 3. Add body images
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const bodyContent = bodyMatch ? bodyMatch[1] : html;
+  const imgTags = bodyContent.match(/<img\s+[^>]+>/gi) || [];
+  imgTags.forEach(tag => {
+    const attrs = {};
+    const attrRegex = /([a-z0-9:-]+)\s*=\s*(?:["']([^"']*)["']|([^\s>]+))/gi;
+    let match;
+    while ((match = attrRegex.exec(tag)) !== null) {
+      attrs[match[1].toLowerCase()] = match[2] || match[3] || "";
+    }
+    if (attrs.src) {
+      addCandidate(attrs.src, 50, attrs);
+    }
+  });
+
+  // Keywords for scoring
+  const keywords = [];
+  if (title) {
+    title.toLowerCase().split(/[^a-z0-9]+/i).forEach(w => {
+      if (w.length >= 3) keywords.push(w);
+    });
+  }
+  try {
+    const parsed = new URL(baseUrl);
+    const sub = parsed.hostname.split('.')[0];
+    if (sub && sub !== 'www' && sub.length >= 2) {
+      keywords.push(sub.toLowerCase());
+    }
+    parsed.pathname.split(/[^a-z0-9]+/i).forEach(w => {
+      const lower = w.toLowerCase();
+      if (lower.length >= 3 && !['learn', 'home', 'section', 'lesson', 'course'].includes(lower)) {
+        keywords.push(lower);
       }
+    });
+  } catch (e) {}
+
+  // Score candidates
+  const scoredCandidates = [];
+  candidateImages.forEach(candidate => {
+    const lower = candidate.url.toLowerCase();
+    
+    // Tracking pixels / spacers / generic placeholders are rejected immediately
+    if (lower.includes('pixel') || lower.includes('loader') || lower.includes('spacer') || lower.includes('no-image') || lower.includes('placeholder')) {
+      return;
+    }
+
+    // Check size attributes
+    let width = parseInt(candidate.attrs.width, 10);
+    let height = parseInt(candidate.attrs.height, 10);
+    
+    try {
+      const parsedUrl = new URL(candidate.url);
+      const wQuery = parseInt(parsedUrl.searchParams.get('width') || parsedUrl.searchParams.get('w'), 10);
+      const hQuery = parseInt(parsedUrl.searchParams.get('height') || parsedUrl.searchParams.get('h'), 10);
+      if (!isNaN(wQuery)) width = wQuery;
+      if (!isNaN(hQuery)) height = hQuery;
+    } catch (e) {}
+
+    const shopifySizeMatch = candidate.url.match(/_(\d+)x/);
+    if (shopifySizeMatch) {
+      const sizeVal = parseInt(shopifySizeMatch[1], 10);
+      width = sizeVal;
+      height = sizeVal;
+    }
+
+    // Explicit dimensions filter
+    if ((!isNaN(width) && width < 200) || (!isNaN(height) && height < 200)) {
+      return;
+    }
+
+    const checkStr = `${candidate.attrs.alt || ''} ${candidate.attrs.class || ''} ${candidate.attrs.id || ''} ${candidate.attrs['aria-label'] || ''} ${lower}`.toLowerCase();
+    
+    // Explicit logo/icon indicators (icons are small graphics, SVGs are vector shapes)
+    if (checkStr.includes('favicon') || checkStr.includes('avatar') || checkStr.includes('icon') || checkStr.includes('loader') || lower.endsWith('.svg')) {
+      return;
+    }
+
+    let score = candidate.baseScore;
+
+    // Soft penalty for logos/brands
+    if (checkStr.includes('logo') || checkStr.includes('brand')) {
+      score -= 20;
+    }
+
+    // Path keyword bonuses
+    keywords.forEach(word => {
+      if (checkStr.includes(word)) {
+        score += 30;
+      }
+    });
+
+    if (lower.includes('banner') || lower.includes('hero') || lower.includes('cover')) {
+      score += 30;
+    }
+    if (lower.includes('desktop') || lower.includes('-web') || lower.includes('_web')) {
+      score += 20;
+    }
+    if (lower.includes('mobile') || lower.includes('-thumb') || lower.includes('_thumb')) {
+      score -= 15;
+    }
+
+    scoredCandidates.push({ url: candidate.url, score });
+  });
+
+  let image = "";
+  if (scoredCandidates.length > 0) {
+    scoredCandidates.sort((a, b) => b.score - a.score);
+    if (scoredCandidates[0].score >= 30) {
+      image = scoredCandidates[0].url;
     }
   }
 
