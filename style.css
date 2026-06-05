@@ -691,14 +691,14 @@ html {
 }
 
 .mind-masonry {
-  columns: 4 280px;
-  column-gap: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
   inline-size: 100%;
   margin: 0 auto;
 }
 
 .mind-card {
-  break-inside: avoid;
   background-color: var(--bg-glass);
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-md);

@@ -1667,7 +1667,7 @@ function renderGrid() {
     grid.style.display = 'none';
   } else {
     emptyState.setAttribute('hidden', 'true');
-    grid.style.display = 'block';
+    grid.style.display = 'grid';
 
     filteredItems.forEach(item => {
       const card = document.createElement('div');
