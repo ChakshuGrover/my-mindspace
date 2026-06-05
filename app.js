@@ -622,7 +622,10 @@ async function loadMindItems() {
 }
 
 async function uploadFileContent(fileId, jsonContent) {
-  await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+  if (!fileId) {
+    throw new Error('Google Drive upload requires a valid fileId');
+  }
+  const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
     method: 'PATCH',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
@@ -630,6 +633,9 @@ async function uploadFileContent(fileId, jsonContent) {
     },
     body: JSON.stringify(jsonContent)
   });
+  if (!res.ok) {
+    throw new Error(`Failed to upload file content to Google Drive: ${res.status}`);
+  }
 }
 
 // --- Folder Management ---
@@ -1460,7 +1466,13 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo =
       })
     });
     
+    if (!createRes.ok) {
+      throw new Error(`Failed to create file on Google Drive: ${createRes.status}`);
+    }
     const driveFile = await createRes.json();
+    if (!driveFile.id) {
+      throw new Error('Google Drive file creation did not return an ID');
+    }
     
     // 4. Upload contents
     await uploadFileContent(driveFile.id, newItem);
@@ -1531,7 +1543,13 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo =
           parents: ['appDataFolder']
         })
       });
+      if (!createRes.ok) {
+        throw new Error(`Failed to create fallback file on Google Drive: ${createRes.status}`);
+      }
       const driveFile = await createRes.json();
+      if (!driveFile.id) {
+        throw new Error('Google Drive fallback file creation did not return an ID');
+      }
       await uploadFileContent(driveFile.id, newItem);
       newItem._drive_file_id = driveFile.id;
       newItem._is_newly_saved = true;
@@ -1552,6 +1570,11 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo =
       saveFilesCache();
       showToast('Failed to save to Google Drive.');
       setSyncStatus('synced', 'Sync Failed');
+      
+      // If error looks like an authentication failure (e.g. 401), trigger token check
+      if (saveErr.message.includes('401') || saveErr.message.includes('auth') || !accessToken) {
+        ensureValidToken(() => {});
+      }
     }
 
     renderGrid();
