@@ -147,9 +147,16 @@ function parseHtmlMetadata(html, baseUrl) {
     }
   }
 
-  // Fallback to Thum.io screenshot API if no valid main content image was found
+  // Fallback to high-resolution brand favicon/webclip if no valid main content image was found
   if (!image) {
-    image = `https://image.thum.io/get/width/600/crop/800/maxAge/24/${baseUrl}`;
+    try {
+      const parsed = new URL(baseUrl);
+      const hostParts = parsed.hostname.split('.');
+      const domain = hostParts.length >= 2 ? hostParts.slice(-2).join('.') : parsed.hostname;
+      image = `https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://${domain}&size=128`;
+    } catch (e) {
+      image = `https://image.thum.io/get/width/600/crop/800/maxAge/24/${baseUrl}`;
+    }
   }
 
   const unescapeHtml = (str) => {

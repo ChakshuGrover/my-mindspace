@@ -102,9 +102,16 @@ def parse_html_metadata(html, base_url):
                     image = validated
                     break
             
-    # Fallback to Thum.io screenshot API if no valid main content image was found
+    # Fallback to high-resolution brand favicon/webclip if no valid main content image was found
     if not image:
-        image = f"https://image.thum.io/get/width/600/crop/800/maxAge/24/{base_url}"
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(base_url)
+            host_parts = parsed.netloc.split('.')
+            domain = '.'.join(host_parts[-2:]) if len(host_parts) >= 2 else parsed.netloc
+            image = f"https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://{domain}&size=128"
+        except Exception:
+            image = f"https://image.thum.io/get/width/600/crop/800/maxAge/24/{base_url}"
         
     return {
         "title": html_lib.unescape(title).strip(),
