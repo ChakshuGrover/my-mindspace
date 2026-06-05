@@ -566,10 +566,13 @@ async function verifyAndFetchData() {
 
     // Start background sync without blocking the UI
     loadFolders().then(() => {
-      Promise.all([
+      return Promise.all([
         loadSettingsFromDrive(),
         loadMindItems()
       ]);
+    }).catch(syncErr => {
+      console.error('Initial background sync failed:', syncErr);
+      setSyncStatus('synced', 'Sync Failed');
     });
 
     handleShareQueryParams();
@@ -588,6 +591,11 @@ async function loadFolders() {
     const res = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='folders.json' and mimeType='application/json'&fields=files(id, name, modifiedTime)`, {
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
+    
+    if (!res.ok) {
+      throw new Error(`Failed to list folders from Google Drive: ${res.status}`);
+    }
+    
     const data = await res.json();
     
     if (data.files && data.files.length > 0) {
@@ -601,6 +609,9 @@ async function loadFolders() {
         const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
           headers: { 'Authorization': `Bearer ${accessToken}` }
         });
+        if (!contentRes.ok) {
+          throw new Error(`Failed to get folders content: ${contentRes.status}`);
+        }
         folders = await contentRes.json();
         saveFoldersCache();
         safeStorage.setItem('folders_modified_time', file.modifiedTime);
@@ -623,6 +634,9 @@ async function loadFolders() {
           parents: ['appDataFolder']
         })
       });
+      if (!createRes.ok) {
+        throw new Error(`Failed to create folders.json on Google Drive: ${createRes.status}`);
+      }
       const newFile = await createRes.json();
       safeStorage.setItem('folders_file_id', newFile.id);
       
@@ -635,20 +649,35 @@ async function loadFolders() {
     renderSidebarFolders();
   } catch (err) {
     console.error('Failed to load/create folders.json:', err);
+    throw err;
   }
 }
 
 async function loadMindItems() {
   setSyncStatus('syncing', 'Syncing your Mind...');
   try {
-    // List all application/json files inside appDataFolder except folders.json
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name != 'folders.json' and mimeType='application/json' and trashed=false&fields=files(id, name, modifiedTime)&pageSize=100`, {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-    const data = await res.json();
+    let remoteFiles = [];
+    let pageToken = '';
     
-    if (data.files && data.files.length > 0) {
-      const remoteFiles = data.files || [];
+    do {
+      const url = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name != 'folders.json' and mimeType='application/json' and trashed=false&fields=nextPageToken,files(id, name, modifiedTime)&pageSize=100${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+      
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      
+      if (!res.ok) {
+        throw new Error(`Failed to list files from Google Drive: ${res.status}`);
+      }
+      
+      const data = await res.json();
+      if (data.files) {
+        remoteFiles = remoteFiles.concat(data.files);
+      }
+      pageToken = data.nextPageToken || '';
+    } while (pageToken);
+    
+    if (remoteFiles.length > 0) {
       const remoteFileIds = new Set(remoteFiles.map(f => f.id));
       
       // Filter out cached files that are no longer present on Google Drive (deleted)
@@ -667,6 +696,9 @@ async function loadMindItems() {
           const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
             headers: { 'Authorization': `Bearer ${accessToken}` }
           });
+          if (!contentRes.ok) {
+            throw new Error(`Failed to get file content: ${contentRes.status}`);
+          }
           const item = await contentRes.json();
           item._drive_file_id = file.id;
           item._drive_modified_time = file.modifiedTime;
@@ -1695,10 +1727,14 @@ async function deleteItem(itemId, driveFileId) {
 
   try {
     // Delete file from Google Drive
-    await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}`, {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
+    
+    if (!res.ok) {
+      throw new Error(`Failed to delete file from Google Drive: ${res.status}`);
+    }
 
     // Remove locally
     driveFiles = driveFiles.filter(item => item.id !== itemId);
@@ -1712,6 +1748,11 @@ async function deleteItem(itemId, driveFileId) {
     console.error('Failed to delete item:', err);
     showToast('Failed to delete from Google Drive.');
     setSyncStatus('synced', 'Sync Failed');
+    
+    // If error looks like an authentication failure (e.g. 401), trigger token check
+    if (err.message.includes('401') || err.message.includes('auth') || !accessToken) {
+      ensureValidToken(() => {});
+    }
   }
 }
 
@@ -2325,6 +2366,9 @@ async function loadSettingsFromDrive() {
     const res = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='settings.json' and mimeType='application/json'&fields=files(id, name)`, {
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
+    if (!res.ok) {
+      throw new Error(`Failed to list settings from Google Drive: ${res.status}`);
+    }
     const data = await res.json();
     
     if (data.files && data.files.length > 0) {
@@ -2335,6 +2379,9 @@ async function loadSettingsFromDrive() {
       const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
+      if (!contentRes.ok) {
+        throw new Error(`Failed to get settings content: ${contentRes.status}`);
+      }
       const remoteSettings = await contentRes.json();
       
       // Decrypt Gemini API key
@@ -2353,6 +2400,7 @@ async function loadSettingsFromDrive() {
     }
   } catch (err) {
     console.error('Failed to load settings from Google Drive:', err);
+    throw err;
   }
 }
 
@@ -2375,6 +2423,9 @@ async function syncSettingsToDrive(geminiKey) {
       const res = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='settings.json' and mimeType='application/json'&fields=files(id)`, {
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
+      if (!res.ok) {
+        throw new Error(`Failed to check settings file on Google Drive: ${res.status}`);
+      }
       const data = await res.json();
       if (data.files && data.files.length > 0) {
         fileId = data.files[0].id;
@@ -2401,6 +2452,9 @@ async function syncSettingsToDrive(geminiKey) {
           parents: ['appDataFolder']
         })
       });
+      if (!createRes.ok) {
+        throw new Error(`Failed to create settings file on Google Drive: ${createRes.status}`);
+      }
       const newFile = await createRes.json();
       fileId = newFile.id;
       settingsFileId = fileId;
