@@ -1725,35 +1725,34 @@ async function deleteItem(itemId, driveFileId) {
   closeModal('detail-modal');
   setSyncStatus('syncing', 'Deleting...');
 
-  try {
-    // Delete file from Google Drive
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
-    
-    if (!res.ok) {
-      throw new Error(`Failed to delete file from Google Drive: ${res.status}`);
-    }
+  ensureValidToken(async () => {
+    try {
+      if (driveFileId) {
+        // Delete file from Google Drive
+        const res = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        
+        if (!res.ok && res.status !== 404 && res.status !== 410) {
+          throw new Error(`Failed to delete file from Google Drive: ${res.status}`);
+        }
+      }
 
-    // Remove locally
-    driveFiles = driveFiles.filter(item => item.id !== itemId);
-    saveFilesCache();
-    
-    showToast('Forgotten.');
-    setSyncStatus('synced', 'Synced');
-    renderGrid();
-    renderSidebarFolders(); // Update counts
-  } catch (err) {
-    console.error('Failed to delete item:', err);
-    showToast('Failed to delete from Google Drive.');
-    setSyncStatus('synced', 'Sync Failed');
-    
-    // If error looks like an authentication failure (e.g. 401), trigger token check
-    if (err.message.includes('401') || err.message.includes('auth') || !accessToken) {
-      ensureValidToken(() => {});
+      // Remove locally
+      driveFiles = driveFiles.filter(item => item.id !== itemId);
+      saveFilesCache();
+      
+      showToast('Forgotten.');
+      setSyncStatus('synced', 'Synced');
+      renderGrid();
+      renderSidebarFolders(); // Update counts
+    } catch (err) {
+      console.error('Failed to delete item:', err);
+      showToast('Failed to delete from Google Drive.');
+      setSyncStatus('synced', 'Sync Failed');
     }
-  }
+  });
 }
 
 // --- Masonry Rendering Engine ---
