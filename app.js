@@ -1997,6 +1997,9 @@ function enterEditMode() {
         <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Article URL</label>
         <input type="text" id="edit-detail-url" class="edit-input" style="inline-size: 100%; font-size: 0.9rem; margin-block-end: 16px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 10px; border-radius: 8px; box-sizing: border-box;" value="${item.url || ''}" />
         
+        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Image URL</label>
+        <input type="text" id="edit-detail-image" class="edit-input" style="inline-size: 100%; font-size: 0.9rem; margin-block-end: 16px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 10px; border-radius: 8px; box-sizing: border-box;" value="${item.image || ''}" />
+
         <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Description / Parsed Text</label>
         <textarea id="edit-detail-content" class="edit-textarea" style="inline-size: 100%; block-size: 180px; font-size: 0.95rem; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 12px; border-radius: 8px; resize: vertical; box-sizing: border-box;">${item.content.raw_text || ''}</textarea>
       </div>
@@ -2021,6 +2024,7 @@ async function saveDetailEdits() {
 
   let editTitleVal = document.getElementById('edit-detail-title')?.value.trim();
   let editContentVal = document.getElementById('edit-detail-content')?.value.trim();
+  let editImageVal = document.getElementById('edit-detail-image')?.value.trim();
 
   if (editTitleVal === undefined && editContentVal === undefined) {
     showToast('Cannot save empty changes.');
@@ -2131,7 +2135,9 @@ async function saveDetailEdits() {
     } else if (editUrlVal !== undefined) {
       item.url = editUrlVal;
     }
-    if (urlChanged && scrapedImage !== null) {
+    if (editImageVal !== undefined) {
+      item.image = editImageVal;
+    } else if (urlChanged && scrapedImage !== null) {
       item.image = scrapedImage;
     }
   }

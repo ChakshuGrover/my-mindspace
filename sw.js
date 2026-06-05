@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mymindspace-cache-v2';
+const CACHE_NAME = 'mymindspace-cache-v3';
 const ASSETS = [
   '/',
   '/index.html',

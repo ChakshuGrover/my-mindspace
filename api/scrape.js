@@ -153,7 +153,7 @@ function parseHtmlMetadata(html, baseUrl) {
       const parsed = new URL(baseUrl);
       const hostParts = parsed.hostname.split('.');
       const domain = hostParts.length >= 2 ? hostParts.slice(-2).join('.') : parsed.hostname;
-      image = `https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://${domain}&size=128`;
+      image = `https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://${domain}&size=256`;
     } catch (e) {
       image = `https://image.thum.io/get/width/600/crop/800/maxAge/24/${baseUrl}`;
     }

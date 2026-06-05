@@ -109,7 +109,7 @@ def parse_html_metadata(html, base_url):
             parsed = urlparse(base_url)
             host_parts = parsed.netloc.split('.')
             domain = '.'.join(host_parts[-2:]) if len(host_parts) >= 2 else parsed.netloc
-            image = f"https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://{domain}&size=128"
+            image = f"https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://{domain}&size=256"
         except Exception:
             image = f"https://image.thum.io/get/width/600/crop/800/maxAge/24/{base_url}"
         
