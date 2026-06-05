@@ -10,6 +10,104 @@ import traceback
 
 PORT = 8000
 
+def fetch_homepage_image(base_url, title):
+    try:
+        parsed = urlparse(base_url)
+        host_parts = parsed.netloc.split('.')
+        domain = '.'.join(host_parts[-2:]) if len(host_parts) >= 2 else parsed.netloc
+        
+        # Collect keywords
+        keywords = []
+        if title:
+            for w in re.findall(r'[a-zA-Z0-9]+', title):
+                if len(w) >= 3:
+                    keywords.append(w.lower())
+                    
+        sub = host_parts[0]
+        if sub and sub != 'www' and len(sub) >= 2:
+            keywords.append(sub.lower())
+            
+        for w in re.findall(r'[a-zA-Z0-9]+', parsed.path):
+            lower = w.lower()
+            if len(lower) >= 3 and lower not in ['learn', 'home', 'section', 'lesson', 'course']:
+                keywords.append(lower)
+                
+        keywords = list(set(keywords))
+        
+        urls_to_try = [
+            f"https://www.{domain}/",
+            f"https://{domain}/",
+            f"https://{parsed.netloc}/"
+        ]
+        
+        unique_urls = []
+        for url in urls_to_try:
+            if url not in unique_urls:
+                unique_urls.append(url)
+                
+        for home_url in unique_urls:
+            try:
+                req = urllib.request.Request(
+                    home_url, 
+                    headers={
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=3) as response:
+                    content_type = response.headers.get('Content-Type', '')
+                    if 'text/html' not in content_type.lower():
+                        continue
+                    
+                    html_bytes = response.read()
+                    try:
+                        html_text = html_bytes.decode('utf-8', errors='replace')
+                    except Exception:
+                        html_text = html_bytes.decode('latin-1', errors='replace')
+                        
+                    img_matches = re.findall(r'<img\s+[^>]*src=["\']([^"\']+)["\']', html_text, re.IGNORECASE)
+                    if not img_matches:
+                        continue
+                        
+                    scored_images = []
+                    for src in img_matches:
+                        src = src.strip()
+                        if src.startswith('//'):
+                            resolved = 'https:' + src
+                        else:
+                            resolved = urljoin(home_url, src)
+                            
+                        lower = resolved.lower()
+                        if any(x in lower for x in ['pixel', 'loader', 'spacer', 'no-image', 'placeholder']):
+                            continue
+                            
+                        score = 0
+                        for word in keywords:
+                            if word in lower:
+                                score += 50
+                                
+                        if any(x in lower for x in ['banner', 'hero', 'cover']):
+                            score += 30
+                        if any(x in lower for x in ['desktop', '-web', '_web']):
+                            score += 20
+                        if any(x in lower for x in ['mobile', '-thumb', '_thumb']):
+                            score -= 15
+                        if any(x in lower for x in ['logo', 'brand']):
+                            score += 15
+                        if lower.endswith('.svg'):
+                            score += 10
+                            
+                        scored_images.append((resolved, score))
+                        
+                    if scored_images:
+                        scored_images.sort(key=lambda x: x[1], reverse=True)
+                        if scored_images[0][1] >= 40:
+                            return scored_images[0][0]
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
 def parse_html_metadata(html, base_url):
     # Find all meta tags
     meta_tags = re.findall(r'<meta\s+([^>]+)>', html, re.IGNORECASE)
@@ -102,14 +200,18 @@ def parse_html_metadata(html, base_url):
                     image = validated
                     break
             
-    # Fallback to high-resolution brand favicon/webclip if no valid main content image was found
+    # Fallback to homepage smart logo/banner or brand favicon if no valid main content image was found
     if not image:
         try:
-            from urllib.parse import urlparse
-            parsed = urlparse(base_url)
-            host_parts = parsed.netloc.split('.')
-            domain = '.'.join(host_parts[-2:]) if len(host_parts) >= 2 else parsed.netloc
-            image = f"https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://{domain}&size=256"
+            home_img = fetch_homepage_image(base_url, title)
+            if home_img:
+                image = home_img
+            else:
+                from urllib.parse import urlparse
+                parsed = urlparse(base_url)
+                host_parts = parsed.netloc.split('.')
+                domain = '.'.join(host_parts[-2:]) if len(host_parts) >= 2 else parsed.netloc
+                image = f"https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://{domain}&size=256"
         except Exception:
             image = f"https://image.thum.io/get/width/600/crop/800/maxAge/24/{base_url}"
         

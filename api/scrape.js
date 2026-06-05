@@ -2,7 +2,144 @@ const https = require('https');
 const http = require('http');
 const { URL } = require('url');
 
-function parseHtmlMetadata(html, baseUrl) {
+function fetchHtmlContent(urlStr, timeoutMs = 4000) {
+  return new Promise((resolve) => {
+    try {
+      const parsed = new URL(urlStr);
+      const client = parsed.protocol === 'https:' ? https : http;
+      
+      const req = client.get(urlStr, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        },
+        timeout: timeoutMs
+      }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          const redirUrl = new URL(res.headers.location, urlStr).href;
+          resolve(fetchHtmlContent(redirUrl, timeoutMs));
+          return;
+        }
+        if (res.statusCode !== 200) {
+          resolve(null);
+          return;
+        }
+        let data = '';
+        res.on('data', (chunk) => data += chunk);
+        res.on('end', () => resolve(data));
+      });
+      req.on('error', () => resolve(null));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(null);
+      });
+    } catch (e) {
+      resolve(null);
+    }
+  });
+}
+
+async function fetchHomepageImage(baseUrl, title) {
+  try {
+    const parsed = new URL(baseUrl);
+    const hostParts = parsed.hostname.split('.');
+    const domain = hostParts.length >= 2 ? hostParts.slice(-2).join('.') : parsed.hostname;
+    
+    const keywords = [];
+    if (title) {
+      title.toLowerCase().split(/[^a-z0-9]+/i).forEach(w => {
+        if (w.length >= 3) keywords.push(w);
+      });
+    }
+    const sub = parsed.hostname.split('.')[0];
+    if (sub && sub !== 'www' && sub.length >= 2) {
+      keywords.push(sub.toLowerCase());
+    }
+    parsed.pathname.split(/[^a-z0-9]+/i).forEach(w => {
+      const lower = w.toLowerCase();
+      if (lower.length >= 3 && !['learn', 'home', 'section', 'lesson', 'course'].includes(lower)) {
+        keywords.push(lower);
+      }
+    });
+
+    const urlsToTry = [
+      `https://www.${domain}/`,
+      `https://${domain}/`,
+      `https://${parsed.hostname}/`
+    ];
+
+    const uniqueUrls = Array.from(new Set(urlsToTry));
+
+    for (const homeUrl of uniqueUrls) {
+      try {
+        const html = await fetchHtmlContent(homeUrl, 3000);
+        if (!html) continue;
+
+        const imgMatches = html.match(/<img[^>]*src=["']([^"']+)["']/gi) || [];
+        if (imgMatches.length === 0) continue;
+
+        const scoredImages = [];
+        imgMatches.forEach(tag => {
+          const srcMatch = tag.match(/src=["']([^"']+)["']/i);
+          if (!srcMatch) return;
+          const src = srcMatch[1];
+          
+          let resolved = src.trim();
+          if (resolved.startsWith('//')) {
+            resolved = 'https:' + resolved;
+          } else if (resolved.startsWith('/')) {
+            resolved = new URL(resolved, homeUrl).href;
+          } else if (!resolved.startsWith('http://') && !resolved.startsWith('https://')) {
+            resolved = new URL(resolved, homeUrl).href;
+          }
+
+          const lower = resolved.toLowerCase();
+          if (lower.includes('pixel') || lower.includes('loader') || lower.includes('spacer') || lower.includes('no-image') || lower.includes('placeholder')) {
+            return;
+          }
+
+          let score = 0;
+          keywords.forEach(word => {
+            if (lower.includes(word)) {
+              score += 50;
+            }
+          });
+
+          if (lower.includes('banner') || lower.includes('hero') || lower.includes('cover')) {
+            score += 30;
+          }
+          if (lower.includes('desktop') || lower.includes('-web') || lower.includes('_web')) {
+            score += 20;
+          }
+          if (lower.includes('mobile') || lower.includes('-thumb') || lower.includes('_thumb')) {
+            score -= 15;
+          }
+          if (lower.includes('logo') || lower.includes('brand')) {
+            score += 15;
+          }
+          if (lower.endsWith('.svg')) {
+            score += 10;
+          }
+
+          scoredImages.push({ url: resolved, score });
+        });
+
+        if (scoredImages.length > 0) {
+          scoredImages.sort((a, b) => b.score - a.score);
+          if (scoredImages[0].score >= 40) {
+            return scoredImages[0].url;
+          }
+        }
+      } catch (err) {
+        // Continue
+      }
+    }
+  } catch (e) {
+    // Ignore
+  }
+  return null;
+}
+
+async function parseHtmlMetadata(html, baseUrl) {
   const metaTags = html.match(/<meta\s+([^>]+)>/gi) || [];
   
   let ogTitle = "";
@@ -147,13 +284,18 @@ function parseHtmlMetadata(html, baseUrl) {
     }
   }
 
-  // Fallback to high-resolution brand favicon/webclip if no valid main content image was found
+  // Fallback to homepage smart logo/banner or brand favicon if no valid main content image was found
   if (!image) {
     try {
-      const parsed = new URL(baseUrl);
-      const hostParts = parsed.hostname.split('.');
-      const domain = hostParts.length >= 2 ? hostParts.slice(-2).join('.') : parsed.hostname;
-      image = `https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://${domain}&size=256`;
+      const homeImg = await fetchHomepageImage(baseUrl, title);
+      if (homeImg) {
+        image = homeImg;
+      } else {
+        const parsed = new URL(baseUrl);
+        const hostParts = parsed.hostname.split('.');
+        const domain = hostParts.length >= 2 ? hostParts.slice(-2).join('.') : parsed.hostname;
+        image = `https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://${domain}&size=256`;
+      }
     } catch (e) {
       image = `https://image.thum.io/get/width/600/crop/800/maxAge/24/${baseUrl}`;
     }
@@ -215,8 +357,8 @@ module.exports = async (req, res) => {
 
       let data = '';
       scrapeRes.on('data', (chunk) => data += chunk);
-      scrapeRes.on('end', () => {
-        const metadata = parseHtmlMetadata(data, targetUrl);
+      scrapeRes.on('end', async () => {
+        const metadata = await parseHtmlMetadata(data, targetUrl);
         res.status(200).json(metadata);
       });
     }).on('error', (err) => {
