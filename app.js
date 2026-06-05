@@ -1996,22 +1996,56 @@ async function saveDetailEdits() {
   const item = currentDetailItem;
   if (!item) return;
 
-  const editTitleVal = document.getElementById('edit-detail-title')?.value.trim();
-  const editContentVal = document.getElementById('edit-detail-content')?.value.trim();
+  let editTitleVal = document.getElementById('edit-detail-title')?.value.trim();
+  let editContentVal = document.getElementById('edit-detail-content')?.value.trim();
 
-  if (!editTitleVal && !editContentVal) {
+  if (editTitleVal === undefined && editContentVal === undefined) {
     showToast('Cannot save empty changes.');
     return;
+  }
+
+  let editUrlVal = '';
+  let urlChanged = false;
+  let cleanedUrl = null;
+  let scrapedImage = null;
+  let scrapeMeta = null;
+
+  if (item.type === 'article') {
+    editUrlVal = document.getElementById('edit-detail-url')?.value.trim() || '';
+    cleanedUrl = extractAndCleanUrl(editUrlVal);
+    if (cleanedUrl && cleanedUrl !== item.url) {
+      urlChanged = true;
+    }
   }
 
   showToast('AI is analyzing updated changes...');
   setSyncStatus('syncing', 'AI Analyzing...');
 
+  // If URL changed, re-scrape first
+  if (urlChanged) {
+    try {
+      const scrapeRes = await fetch(`/api/scrape?url=${encodeURIComponent(cleanedUrl)}`);
+      if (scrapeRes.ok) {
+        scrapeMeta = await scrapeRes.json();
+        scrapedImage = scrapeMeta.image;
+        
+        // If user didn't modify title/description, use the scraped ones
+        if (editTitleVal === item.title && scrapeMeta.title) {
+          editTitleVal = scrapeMeta.title;
+        }
+        if (editContentVal === item.content.raw_text && scrapeMeta.description) {
+          editContentVal = scrapeMeta.description;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to re-scrape URL on edit:', e);
+    }
+  }
+
   // Setup input for AI
   let aiInputText = editContentVal || '';
   if (item.type === 'article') {
-    const editUrlVal = document.getElementById('edit-detail-url')?.value.trim();
-    aiInputText = `Webpage URL: ${editUrlVal || item.url}\nTitle: ${editTitleVal}\nDescription: ${editContentVal}`;
+    aiInputText = `Webpage URL: ${cleanedUrl || editUrlVal || item.url}\nTitle: ${editTitleVal}\nDescription: ${editContentVal}`;
   } else if (item.type === 'note') {
     aiInputText = `Title: ${editTitleVal}\nContent: ${editContentVal}`;
   }
@@ -2069,9 +2103,13 @@ async function saveDetailEdits() {
     }
   }
   else if (item.type === 'article') {
-    const editUrlVal = document.getElementById('edit-detail-url')?.value.trim();
-    if (editUrlVal !== undefined) {
+    if (cleanedUrl) {
+      item.url = cleanedUrl;
+    } else if (editUrlVal !== undefined) {
       item.url = editUrlVal;
+    }
+    if (urlChanged && scrapedImage !== null) {
+      item.image = scrapedImage;
     }
   }
 
