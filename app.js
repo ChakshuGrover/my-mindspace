@@ -1591,28 +1591,31 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo =
       }
     }
 
-    // 1. Run Gemma 4 31B / Gemini 3.1 Cloud analysis
-    const aiParsed = await analyzeInputWithAI(aiInputText);
+    // 1. Run Gemma 4 31B / Gemini 3.1 Cloud analysis (Skip for To-Dos)
+    let aiParsed = null;
+    if (!isTodo) {
+      aiParsed = await analyzeInputWithAI(aiInputText);
+    }
     
     // 2. Build full metadata object
     const newItem = {
       id: 'item-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
       created_at: new Date().toISOString(),
-      type: isTodo ? 'todo' : ((aiParsed.type === 'note' && isUrl) ? 'article' : aiParsed.type),
-      title: isTodo ? (rawInputText.split('\n')[0].trim().substring(0, 40) || 'To-Do List') : (aiParsed.title || scrapedTitle || 'Saved Item'),
+      type: isTodo ? 'todo' : ((aiParsed && aiParsed.type === 'note' && isUrl) ? 'article' : aiParsed.type),
+      title: isTodo ? (rawInputText.split('\n')[0].trim().substring(0, 40) || 'To-Do List') : (aiParsed ? (aiParsed.title || 'Saved Item') : scrapedTitle || 'Saved Item'),
       folders: folderId ? [folderId] : [],
       color: color,
       pinned: false,
-      url: (!isTodo && (aiParsed.type === 'article' || isUrl)) ? (cleanedUrl || rawInputText) : '',
+      url: (!isTodo && aiParsed && (aiParsed.type === 'article' || isUrl)) ? (cleanedUrl || rawInputText) : '',
       image: scrapedImage || '',
-      ai_analysis: aiParsed.ai_analysis || {
-        summary: 'Saved note.',
-        tags: ['inbox'],
+      ai_analysis: (aiParsed && aiParsed.ai_analysis) || {
+        summary: isTodo ? 'To-Do Checklist' : 'Saved note.',
+        tags: isTodo ? ['todo'] : ['inbox'],
         vibe: 'clean',
         key_takeaways: []
       },
       content: {
-        raw_text: isTodo ? rawInputText : (aiParsed.content?.raw_text || rawInputText),
+        raw_text: isTodo ? rawInputText : ((aiParsed && aiParsed.content && aiParsed.content.raw_text) || rawInputText),
         word_count: rawInputText.split(/\s+/).length,
         reading_time_mins: Math.max(1, Math.ceil(rawInputText.split(/\s+/).length / 200))
       }
@@ -2500,9 +2503,6 @@ async function saveDetailEdits() {
     }
   }
 
-  showToast('AI is analyzing updated changes...');
-  setSyncStatus('syncing', 'AI Analyzing...');
-
   // If URL changed, re-scrape first
   if (urlChanged) {
     try {
@@ -2535,11 +2535,15 @@ async function saveDetailEdits() {
   }
 
   let aiParsed = null;
-  try {
-    aiParsed = await analyzeInputWithAI(aiInputText);
-  } catch (aiErr) {
-    console.error('AI analysis during edit failed:', aiErr);
-    showToast('AI analysis failed. Using basic save.');
+  if (item.type !== 'todo') {
+    showToast('AI is analyzing updated changes...');
+    setSyncStatus('syncing', 'AI Analyzing...');
+    try {
+      aiParsed = await analyzeInputWithAI(aiInputText);
+    } catch (aiErr) {
+      console.error('AI analysis during edit failed:', aiErr);
+      showToast('AI analysis failed. Using basic save.');
+    }
   }
 
   // Update item object properties
