@@ -2017,6 +2017,8 @@ function renderGrid() {
     pinnedItems.forEach(item => renderCard(item, pinnedGrid));
     othersItems.forEach(item => renderCard(item, grid));
   }
+}
+
 async function togglePin(item) {
   item.pinned = !item.pinned;
   
