@@ -1693,3 +1693,173 @@ label {
     bottom: 16px;
   }
 }
+
+/* ==========================================================================
+   Google Keep Inspired Features (Pinning & Color Coding)
+   ========================================================================== */
+
+/* --- Card Pin Button --- */
+.card-pin-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-glass);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: opacity var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+  opacity: 0;
+  z-index: 10;
+}
+
+.mind-card:hover .card-pin-btn,
+.card-pin-btn.is-pinned {
+  opacity: 1;
+}
+
+@media (max-width: 768px) {
+  .card-pin-btn {
+    opacity: 0.6;
+  }
+  .card-pin-btn.is-pinned {
+    opacity: 1;
+  }
+}
+
+.card-pin-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--text-primary);
+}
+
+.card-pin-btn.is-pinned {
+  color: var(--accent-purple);
+  background: rgba(168, 85, 247, 0.1);
+  border-color: rgba(168, 85, 247, 0.3);
+}
+
+/* --- Detail Modal Pin Button --- */
+.btn-detail-action {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.btn-detail-action:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.btn-detail-action.is-pinned {
+  color: var(--accent-purple);
+  background: rgba(168, 85, 247, 0.1);
+}
+
+/* --- Color Picker Swatches --- */
+.color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform var(--transition-fast), border-color var(--transition-fast);
+}
+
+.color-swatch:hover {
+  transform: scale(1.15);
+}
+
+.color-swatch.active {
+  border-color: #fff;
+  transform: scale(1.1);
+}
+
+.color-swatch--default {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-glass) !important;
+}
+.color-swatch--default.active {
+  border: 2px solid #fff !important;
+}
+.color-swatch--red { background-color: #ef4444; }
+.color-swatch--yellow { background-color: #f59e0b; }
+.color-swatch--green { background-color: #10b981; }
+.color-swatch--blue { background-color: #06b6d4; }
+.color-swatch--purple { background-color: #8b5cf6; }
+.color-swatch--pink { background-color: #ec4899; }
+
+/* --- Card Background Colors & Gradients --- */
+.mind-card.color-default {
+  background-color: var(--bg-glass);
+  border-color: var(--border-glass);
+}
+.mind-card.color-red {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(18, 16, 22, 0.75) 100%);
+  border-color: rgba(239, 68, 68, 0.22);
+}
+.mind-card.color-yellow {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(18, 16, 22, 0.75) 100%);
+  border-color: rgba(245, 158, 11, 0.22);
+}
+.mind-card.color-green {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(18, 16, 22, 0.75) 100%);
+  border-color: rgba(16, 185, 129, 0.22);
+}
+.mind-card.color-blue {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, rgba(18, 16, 22, 0.75) 100%);
+  border-color: rgba(6, 182, 212, 0.22);
+}
+.mind-card.color-purple {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(18, 16, 22, 0.75) 100%);
+  border-color: rgba(139, 92, 246, 0.22);
+}
+.mind-card.color-pink {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.1) 0%, rgba(18, 16, 22, 0.75) 100%);
+  border-color: rgba(236, 72, 153, 0.22);
+}
+
+/* --- Detail Modal Background Colors --- */
+.modal-panel--detail.color-default {
+  background-color: var(--bg-secondary);
+  border-color: var(--border-glass);
+}
+.modal-panel--detail.color-red {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, #121016 100%);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+.modal-panel--detail.color-yellow {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, #121016 100%);
+  border-color: rgba(245, 158, 11, 0.25);
+}
+.modal-panel--detail.color-green {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, #121016 100%);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+.modal-panel--detail.color-blue {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.1) 0%, #121016 100%);
+  border-color: rgba(6, 182, 212, 0.25);
+}
+.modal-panel--detail.color-purple {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, #121016 100%);
+  border-color: rgba(139, 92, 246, 0.25);
+}
+.modal-panel--detail.color-pink {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.1) 0%, #121016 100%);
+  border-color: rgba(236, 72, 153, 0.25);
+}
+
+.canvas-section-title {
+  font-family: var(--font-sans);
+}

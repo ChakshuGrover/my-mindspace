@@ -7,8 +7,14 @@ import json
 import re
 import html as html_lib
 import traceback
-
-PORT = 8000
+import os
+import sys
+PORT = int(os.environ.get("PORT", 8000))
+if len(sys.argv) > 1:
+    try:
+        PORT = int(sys.argv[1])
+    except ValueError:
+        pass
 
 def fetch_homepage_image(base_url, title):
     try:

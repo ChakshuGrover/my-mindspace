@@ -344,6 +344,14 @@ function setupEventListeners() {
   document.getElementById('btn-close-add-modal').addEventListener('click', () => closeModal('add-modal'));
   document.getElementById('add-modal-backdrop').addEventListener('click', () => closeModal('add-modal'));
 
+  // Quick Add Color Picker Swatches
+  document.querySelectorAll('#add-modal .color-swatch').forEach(swatch => {
+    swatch.addEventListener('click', () => {
+      document.querySelectorAll('#add-modal .color-swatch').forEach(s => s.classList.remove('active'));
+      swatch.classList.add('active');
+    });
+  });
+
   document.getElementById('btn-new-folder').addEventListener('click', () => openModal('folder-modal'));
   document.getElementById('btn-cancel-folder').addEventListener('click', () => closeModal('folder-modal'));
   document.getElementById('btn-close-folder-modal').addEventListener('click', () => closeModal('folder-modal'));
@@ -491,6 +499,15 @@ function openModal(modalId) {
     if (newFolderContainer) newFolderContainer.style.display = 'none';
     const newFolderNameInput = document.getElementById('add-new-folder-name');
     if (newFolderNameInput) newFolderNameInput.value = '';
+    
+    // Reset color swatches to default
+    document.querySelectorAll('#add-modal .color-swatch').forEach(swatch => {
+      if (swatch.dataset.color === 'default') {
+        swatch.classList.add('active');
+      } else {
+        swatch.classList.remove('active');
+      }
+    });
   } else if (modalId === 'folder-modal') {
     document.getElementById('folder-name-input').focus();
   }
@@ -1454,6 +1471,10 @@ async function saveNewItem() {
     return;
   }
 
+  // Read selected color from Quick Add swatches
+  const activeSwatch = document.querySelector('#add-modal .color-swatch.active');
+  const selectedColor = activeSwatch ? activeSwatch.dataset.color : 'default';
+
   // Close modal and reset input immediately!
   addInput.value = '';
   if (todoToggle) todoToggle.checked = false;
@@ -1469,6 +1490,8 @@ async function saveNewItem() {
     type: isTodo ? 'todo' : 'note',
     title: 'Processing...',
     folders: folderId ? [folderId] : [],
+    color: selectedColor,
+    pinned: false,
     isPlaceholder: true,
     content: { raw_text: rawInputText }
   };
@@ -1478,7 +1501,7 @@ async function saveNewItem() {
   renderGrid();
 
   // Run the background save asynchronously
-  runBackgroundSave(placeholderId, rawInputText, folderId, isTodo);
+  runBackgroundSave(placeholderId, rawInputText, folderId, isTodo, selectedColor);
 }
 
 function addNewItemDirectly(rawInputText, folderId = '') {
@@ -1545,7 +1568,7 @@ function extractAndCleanUrl(text) {
   return null;
 }
 
-async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo = false) {
+async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo = false, color = 'default') {
   try {
     // Extract and clean the URL if present
     const cleanedUrl = !isTodo ? extractAndCleanUrl(rawInputText) : null;
@@ -1578,6 +1601,8 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo =
       type: isTodo ? 'todo' : ((aiParsed.type === 'note' && isUrl) ? 'article' : aiParsed.type),
       title: isTodo ? (rawInputText.split('\n')[0].trim().substring(0, 40) || 'To-Do List') : (aiParsed.title || scrapedTitle || 'Saved Item'),
       folders: folderId ? [folderId] : [],
+      color: color,
+      pinned: false,
       url: (!isTodo && (aiParsed.type === 'article' || isUrl)) ? (cleanedUrl || rawInputText) : '',
       image: scrapedImage || '',
       ai_analysis: aiParsed.ai_analysis || {
@@ -1668,6 +1693,8 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo =
       type: isTodo ? 'todo' : fallback.type,
       title: isTodo ? (rawInputText.split('\n')[0].trim().substring(0, 40) || 'To-Do List') : fallback.title,
       folders: folderId ? [folderId] : [],
+      color: color,
+      pinned: false,
       url: (!isTodo && fallback.type === 'article') ? (cleanedUrl || rawInputText) : '',
       ai_analysis: fallback.ai_analysis,
       content: {
@@ -1837,14 +1864,34 @@ function renderGrid() {
     });
   }
 
+  const pinnedSection = document.getElementById('pinned-section');
+  const pinnedGrid = document.getElementById('pinned-grid');
+  const othersTitle = document.getElementById('others-title');
+  const othersSection = document.getElementById('others-section');
+
+  if (pinnedGrid) pinnedGrid.innerHTML = '';
+
   if (filteredItems.length === 0) {
     emptyState.removeAttribute('hidden');
+    if (pinnedSection) pinnedSection.setAttribute('hidden', 'true');
+    if (othersTitle) othersTitle.setAttribute('hidden', 'true');
     grid.style.display = 'none';
   } else {
     emptyState.setAttribute('hidden', 'true');
     grid.style.display = 'grid';
 
-    filteredItems.forEach(item => {
+    const pinnedItems = filteredItems.filter(item => item.pinned && !item.isPlaceholder);
+    const othersItems = filteredItems.filter(item => !item.pinned || item.isPlaceholder);
+
+    if (pinnedItems.length > 0) {
+      if (pinnedSection) pinnedSection.removeAttribute('hidden');
+      if (othersTitle) othersTitle.removeAttribute('hidden');
+    } else {
+      if (pinnedSection) pinnedSection.setAttribute('hidden', 'true');
+      if (othersTitle) othersTitle.setAttribute('hidden', 'true');
+    }
+
+    const renderCard = (item, targetGrid) => {
       const card = document.createElement('div');
       card.dataset.id = item.id;
 
@@ -1861,11 +1908,11 @@ function renderGrid() {
           </div>
         `;
         card.addEventListener('click', () => showToast('AI is still processing this item...'));
-        grid.appendChild(card);
+        targetGrid.appendChild(card);
         return;
       }
 
-      card.className = `mind-card mind-card--${item.type}`;
+      card.className = `mind-card mind-card--${item.type} color-${item.color || 'default'}`;
 
       // Card rendering template based on types
       if (item.type === 'todo') {
@@ -1881,7 +1928,7 @@ function renderGrid() {
         `).join('');
 
         card.innerHTML = `
-          <div class="card-note-title" style="margin-block-end: 12px;">${item.title}</div>
+          <div class="card-note-title" style="margin-block-end: 12px; padding-inline-end: 28px;">${item.title}</div>
           <div class="card-todo-list" style="margin-block-end: 12px; pointer-events: auto;">
             ${todoListHtml || '<div style="color: var(--text-muted); font-style: italic;">Empty list</div>'}
             ${remainingCount > 0 ? `<div style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-inline-start: 22px; margin-block-start: 4px;">+ ${remainingCount} more tasks</div>` : ''}
@@ -1896,7 +1943,7 @@ function renderGrid() {
         card.innerHTML = `
           ${thumbImg}
           <div class="card-article-content">
-            <div class="card-article-source">${item.title}</div>
+            <div class="card-article-source" style="padding-inline-end: 28px;">${item.title}</div>
             <div class="card-article-title">${item.ai_analysis.detailed_summary || item.ai_analysis.summary}</div>
             <div class="card-meta">
               <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
@@ -1906,7 +1953,7 @@ function renderGrid() {
       } 
       else { // note
         card.innerHTML = `
-          <div class="card-note-title">${item.title}</div>
+          <div class="card-note-title" style="padding-inline-end: 28px;">${item.title}</div>
           <div class="card-note-desc">${item.ai_analysis.detailed_summary || item.ai_analysis.summary}</div>
           <div class="card-meta">
             <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
@@ -1914,10 +1961,26 @@ function renderGrid() {
         `;
       }
 
+      // Add Pin/Unpin button to card
+      const pinBtn = document.createElement('button');
+      pinBtn.className = `card-pin-btn ${item.pinned ? 'is-pinned' : ''}`;
+      pinBtn.title = item.pinned ? 'Unpin note' : 'Pin note';
+      pinBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="${item.pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="17" x2="12" y2="22"></line>
+          <path d="M5 17h14v-1.76a2 2 0 0 0-.44-1.24l-2.78-3.5A2 2 0 0 1 15 9.26V5a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4.26a2 2 0 0 1-.78 1.24l-2.78 3.5a2 2 0 0 0-.44 1.24z"></path>
+        </svg>
+      `;
+      pinBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        togglePin(item);
+      });
+      card.appendChild(pinBtn);
+
       // Add click to open Detail Modal
       card.addEventListener('click', (e) => {
-        if (e.target.classList.contains('card-todo-checkbox')) {
-          return; // Handled by checkbox change listener
+        if (e.target.classList.contains('card-todo-checkbox') || e.target.closest('.card-pin-btn')) {
+          return;
         }
         showDetailModal(item);
       });
@@ -1929,7 +1992,6 @@ function renderGrid() {
           if (!item.content.todos) item.content.todos = [];
           item.content.todos[idx].completed = cb.checked;
           
-          // Re-render text style locally
           const textEl = cb.nextElementSibling;
           if (textEl) {
             textEl.style.textDecoration = cb.checked ? 'line-through' : 'none';
@@ -1949,8 +2011,31 @@ function renderGrid() {
         });
       });
 
-      grid.appendChild(card);
-    });
+      targetGrid.appendChild(card);
+    };
+
+    pinnedItems.forEach(item => renderCard(item, pinnedGrid));
+    othersItems.forEach(item => renderCard(item, grid));
+  }
+async function togglePin(item) {
+  item.pinned = !item.pinned;
+  
+  // Re-render locally for instant visual feedback
+  renderGrid();
+  
+  setSyncStatus('syncing', 'Updating pin status...');
+  try {
+    await uploadFileContent(item._drive_file_id, item);
+    saveFilesCache();
+    setSyncStatus('synced', 'Synced');
+  } catch (err) {
+    console.error('Failed to update pin status on Drive:', err);
+    showToast('Sync failed.');
+    setSyncStatus('synced', 'Sync Failed');
+    
+    // Rollback local state
+    item.pinned = !item.pinned;
+    renderGrid();
   }
 }
 
@@ -1978,6 +2063,28 @@ function showDetailModal(item) {
 
   currentDetailItem = item;
   isEditingDetail = false;
+
+  // Apply card color class to detail panel
+  const panel = document.querySelector('.modal-panel--detail');
+  if (panel) {
+    panel.className = 'modal-panel modal-panel--detail'; // reset
+    panel.classList.add(`color-${item.color || 'default'}`);
+  }
+
+  // Setup detail pin button
+  const btnPin = document.getElementById('btn-detail-pin');
+  if (btnPin) {
+    btnPin.className = `btn-detail-action ${item.pinned ? 'is-pinned' : ''}`;
+    btnPin.title = item.pinned ? 'Unpin note' : 'Pin note';
+    
+    const newBtnPin = btnPin.cloneNode(true);
+    btnPin.parentNode.replaceChild(newBtnPin, btnPin);
+    newBtnPin.addEventListener('click', async () => {
+      await togglePin(item);
+      newBtnPin.className = `btn-detail-action ${item.pinned ? 'is-pinned' : ''}`;
+      newBtnPin.title = item.pinned ? 'Unpin note' : 'Pin note';
+    });
+  }
 
   // Handle Edit button binding
   const btnEdit = document.getElementById('btn-edit-item');
@@ -2009,21 +2116,58 @@ function showDetailModal(item) {
   // Render modal content
   if (item.type === 'todo') {
     const todos = item.content.todos || [];
-    const todoListHtml = todos.map((todo, idx) => `
+    const activeTodos = todos.filter(t => !t.completed);
+    const completedTodos = todos.filter(t => t.completed);
+
+    const renderTodoRowHtml = (todo, realIdx) => `
       <label class="detail-todo-item" style="display: flex; align-items: flex-start; gap: 10px; font-size: 1.05rem; margin-block-end: 12px; cursor: pointer;">
-        <input type="checkbox" class="detail-todo-checkbox" data-todo-index="${idx}" ${todo.completed ? 'checked' : ''} style="transform: scale(1.15); margin-block-start: 4px;" />
+        <input type="checkbox" class="detail-todo-checkbox" data-todo-index="${realIdx}" ${todo.completed ? 'checked' : ''} style="transform: scale(1.15); margin-block-start: 4px;" />
         <span class="detail-todo-text" style="text-decoration: ${todo.completed ? 'line-through' : 'none'}; color: ${todo.completed ? 'var(--text-muted)' : 'var(--text-primary)'};">${todo.text}</span>
       </label>
-    `).join('');
+    `;
+
+    const activeHtml = activeTodos.map(todo => {
+      const realIdx = todos.indexOf(todo);
+      return renderTodoRowHtml(todo, realIdx);
+    }).join('');
+
+    const completedHtml = completedTodos.map(todo => {
+      const realIdx = todos.indexOf(todo);
+      return renderTodoRowHtml(todo, realIdx);
+    }).join('');
 
     contentContainer.innerHTML = `
       <div class="detail-content">
         <h2 class="detail-title" style="margin-block-end: 20px;">${item.title}</h2>
-        <div class="detail-todo-list" style="margin-block-end: 24px;">
-          ${todoListHtml || '<div style="color: var(--text-muted); font-style: italic;">No tasks in this list.</div>'}
+        <div class="detail-todo-list-active" style="margin-block-end: 16px;">
+          ${activeHtml || '<div style="color: var(--text-muted); font-style: italic;">No active tasks.</div>'}
         </div>
+        ${completedTodos.length > 0 ? `
+          <div class="completed-todos-section" style="border-block-start: 1px solid var(--border-glass); padding-block-start: 16px;">
+            <button type="button" id="btn-toggle-completed-list" style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; margin-block-end: 12px;">
+              <span id="completed-toggle-arrow">▼</span> Completed items (${completedTodos.length})
+            </button>
+            <div id="detail-todo-list-completed" style="margin-inline-start: 4px;">
+              ${completedHtml}
+            </div>
+          </div>
+        ` : ''}
       </div>
     `;
+
+    // Collapsible Completed List Handler
+    const btnToggleCompleted = document.getElementById('btn-toggle-completed-list');
+    const completedList = document.getElementById('detail-todo-list-completed');
+    const toggleArrow = document.getElementById('completed-toggle-arrow');
+    if (btnToggleCompleted && completedList) {
+      btnToggleCompleted.addEventListener('click', () => {
+        const isHidden = completedList.style.display === 'none';
+        completedList.style.display = isHidden ? 'block' : 'none';
+        if (toggleArrow) {
+          toggleArrow.textContent = isHidden ? '▼' : '▶';
+        }
+      });
+    }
 
     // Bind change listener for detail checkboxes
     contentContainer.querySelectorAll('.detail-todo-checkbox').forEach(cb => {
@@ -2032,12 +2176,17 @@ function showDetailModal(item) {
         if (!item.content.todos) item.content.todos = [];
         item.content.todos[idx].completed = cb.checked;
 
-        // Re-render text style locally
+        // Re-render text style locally for instant feedback
         const textEl = cb.nextElementSibling;
         if (textEl) {
           textEl.style.textDecoration = cb.checked ? 'line-through' : 'none';
           textEl.style.color = cb.checked ? 'var(--text-muted)' : 'var(--text-primary)';
         }
+
+        // Delay re-render slightly to show animation
+        setTimeout(() => {
+          showDetailModal(item);
+        }, 250);
 
         setSyncStatus('syncing', 'Updating task...');
         try {
@@ -2140,6 +2289,31 @@ function handleEditSaveClick() {
   }
 }
 
+function getColorPickerHtml(selectedColor) {
+  const colors = ['default', 'red', 'yellow', 'green', 'blue', 'purple', 'pink'];
+  const titles = {
+    default: 'Default',
+    red: 'Coral Red',
+    yellow: 'Amber Yellow',
+    green: 'Emerald Green',
+    blue: 'Teal Blue',
+    purple: 'Lavender Purple',
+    pink: 'Rose Pink'
+  };
+  const swatchesHtml = colors.map(c => `
+    <button type="button" class="color-swatch color-swatch--${c} ${selectedColor === c ? 'active' : ''}" data-color="${c}" title="${titles[c]}"></button>
+  `).join('');
+
+  return `
+    <div class="color-picker-container" style="margin-block-start: 20px; border-block-start: 1px solid var(--border-glass); padding-block-start: 16px;">
+      <span style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-block-end: 8px;">Card Color:</span>
+      <div class="color-picker-row edit-color-picker" style="display: flex; gap: 10px; flex-wrap: wrap;">
+        ${swatchesHtml}
+      </div>
+    </div>
+  `;
+}
+
 function enterEditMode() {
   isEditingDetail = true;
   const btnEdit = document.getElementById('btn-edit-item');
@@ -2152,16 +2326,84 @@ function enterEditMode() {
   const item = currentDetailItem;
 
   if (item.type === 'todo') {
-    const todoLines = (item.content.todos || []).map(t => t.text).join('\n');
     contentContainer.innerHTML = `
       <div class="detail-content">
         <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">List Title</label>
         <input type="text" id="edit-detail-title" class="edit-input" style="inline-size: 100%; font-size: 1.25rem; font-weight: 700; margin-block-end: 16px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 10px; border-radius: 8px; box-sizing: border-box;" value="${item.title.replace(/"/g, '&quot;')}" />
         
-        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Tasks (One per line)</label>
-        <textarea id="edit-detail-content" class="edit-textarea" style="inline-size: 100%; block-size: 220px; font-family: inherit; font-size: 1rem; line-height: 1.5; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 12px; border-radius: 8px; resize: vertical; box-sizing: border-box;">${todoLines}</textarea>
+        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Tasks</label>
+        <div id="edit-todo-list-container" style="display: flex; flex-direction: column; gap: 8px; margin-block-end: 16px;">
+          <!-- Dynamically populated -->
+        </div>
+        
+        <button type="button" id="btn-edit-add-todo" class="btn btn--secondary btn--small" style="display: inline-flex; align-items: center; gap: 6px; margin-block-end: 20px; font-weight: 600;">
+          <span style="font-size: 1.1rem; line-height: 1;">+</span> Add item
+        </button>
+
+        ${getColorPickerHtml(item.color || 'default')}
       </div>
     `;
+
+    const listContainer = document.getElementById('edit-todo-list-container');
+
+    const renderEditRow = (todo = { text: '', completed: false }) => {
+      const row = document.createElement('div');
+      row.className = 'edit-todo-row';
+      row.style.cssText = 'display: flex; align-items: center; gap: 10px; margin-block-end: 8px;';
+      
+      row.innerHTML = `
+        <input type="checkbox" class="edit-todo-row-checkbox" ${todo.completed ? 'checked' : ''} style="transform: scale(1.15); cursor: pointer;" />
+        <input type="text" class="edit-todo-input" style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 8px 12px; border-radius: 8px; box-sizing: border-box; font-size: 0.95rem;" placeholder="List item" value="${todo.text.replace(/"/g, '&quot;')}" />
+        <button type="button" class="btn-delete-todo-row" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;" title="Delete task">&times;</button>
+      `;
+
+      // Handle checkbox change
+      const cb = row.querySelector('.edit-todo-row-checkbox');
+      const input = row.querySelector('.edit-todo-input');
+      cb.addEventListener('change', () => {
+        input.style.textDecoration = cb.checked ? 'line-through' : 'none';
+        input.style.color = cb.checked ? 'var(--text-muted)' : '#fff';
+      });
+      // Apply initial styling
+      input.style.textDecoration = todo.completed ? 'line-through' : 'none';
+      input.style.color = todo.completed ? 'var(--text-muted)' : '#fff';
+
+      // Handle enter key to spawn new item below
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const newRow = renderEditRow();
+          row.after(newRow);
+          newRow.querySelector('.edit-todo-input').focus();
+        }
+      });
+
+      // Handle delete button click
+      row.querySelector('.btn-delete-todo-row').addEventListener('click', () => {
+        row.remove();
+        // If list is completely empty, add one empty row
+        if (listContainer.children.length === 0) {
+          renderEditRow();
+        }
+      });
+
+      listContainer.appendChild(row);
+      return row;
+    };
+
+    // Populate existing todos
+    const todos = item.content.todos || [];
+    if (todos.length > 0) {
+      todos.forEach(t => renderEditRow(t));
+    } else {
+      renderEditRow(); // Always start with at least one empty row
+    }
+
+    // Add item click listener
+    document.getElementById('btn-edit-add-todo').addEventListener('click', () => {
+      const newRow = renderEditRow();
+      newRow.querySelector('.edit-todo-input').focus();
+    });
   }
   else if (item.type === 'article') {
     contentContainer.innerHTML = `
@@ -2177,6 +2419,7 @@ function enterEditMode() {
 
         <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Description / Parsed Text</label>
         <textarea id="edit-detail-content" class="edit-textarea" style="inline-size: 100%; block-size: 180px; font-size: 0.95rem; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 12px; border-radius: 8px; resize: vertical; box-sizing: border-box;">${item.content.raw_text || ''}</textarea>
+        ${getColorPickerHtml(item.color || 'default')}
       </div>
     `;
   }
@@ -2188,9 +2431,24 @@ function enterEditMode() {
         
         <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Content</label>
         <textarea id="edit-detail-content" class="edit-textarea" style="inline-size: 100%; block-size: 250px; font-family: inherit; font-size: 1rem; line-height: 1.5; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 12px; border-radius: 8px; resize: vertical; box-sizing: border-box; white-space: pre-wrap;">${item.content.raw_text}</textarea>
+        ${getColorPickerHtml(item.color || 'default')}
       </div>
     `;
   }
+
+  // Bind color swatch clicks in edit mode
+  document.querySelectorAll('.edit-color-picker .color-swatch').forEach(swatch => {
+    swatch.addEventListener('click', () => {
+      document.querySelectorAll('.edit-color-picker .color-swatch').forEach(s => s.classList.remove('active'));
+      swatch.classList.add('active');
+      
+      const panel = document.querySelector('.modal-panel--detail');
+      if (panel) {
+        panel.className = 'modal-panel modal-panel--detail'; // reset
+        panel.classList.add(`color-${swatch.dataset.color}`);
+      }
+    });
+  });
 }
 
 async function saveDetailEdits() {
@@ -2201,7 +2459,27 @@ async function saveDetailEdits() {
   let editContentVal = document.getElementById('edit-detail-content')?.value.trim();
   let editImageVal = document.getElementById('edit-detail-image')?.value.trim();
 
-  if (editTitleVal === undefined && editContentVal === undefined) {
+  // Read selected color from swatches
+  const activeEditSwatch = document.querySelector('.edit-color-picker .color-swatch.active');
+  const editColorVal = activeEditSwatch ? activeEditSwatch.dataset.color : 'default';
+
+  // Read checklist items if it's a todo
+  let editTodos = [];
+  if (item.type === 'todo') {
+    const rows = document.querySelectorAll('.edit-todo-row');
+    rows.forEach(row => {
+      const txt = row.querySelector('.edit-todo-input').value.trim();
+      const completed = row.querySelector('.edit-todo-row-checkbox').checked;
+      if (txt) {
+        editTodos.push({ text: txt, completed });
+      }
+    });
+  }
+
+  const isTodoEmpty = item.type === 'todo' && editTodos.length === 0 && !editTitleVal;
+  const isOtherEmpty = item.type !== 'todo' && editTitleVal === undefined && editContentVal === undefined;
+
+  if (isTodoEmpty || isOtherEmpty) {
     showToast('Cannot save empty changes.');
     return;
   }
@@ -2250,6 +2528,8 @@ async function saveDetailEdits() {
     aiInputText = `Webpage URL: ${cleanedUrl || editUrlVal || item.url}\nTitle: ${editTitleVal}\nDescription: ${editContentVal}`;
   } else if (item.type === 'note') {
     aiInputText = `Title: ${editTitleVal}\nContent: ${editContentVal}`;
+  } else if (item.type === 'todo') {
+    aiInputText = `Title: ${editTitleVal}\nTasks: ${editTodos.map(t => t.text).join(', ')}`;
   }
 
   let aiParsed = null;
@@ -2261,10 +2541,13 @@ async function saveDetailEdits() {
   }
 
   // Update item object properties
+  if (editColorVal !== undefined) {
+    item.color = editColorVal;
+  }
   if (editTitleVal !== undefined) {
     item.title = editTitleVal;
   }
-  if (editContentVal !== undefined) {
+  if (editContentVal !== undefined && item.type !== 'todo') {
     item.content.raw_text = editContentVal;
     item.content.word_count = editContentVal.split(/\s+/).length;
     item.content.reading_time_mins = Math.max(1, Math.ceil(item.content.word_count / 200));
@@ -2281,21 +2564,11 @@ async function saveDetailEdits() {
 
   // Special properties per type
   if (item.type === 'todo') {
-    if (editContentVal !== undefined) {
-      const lines = editContentVal.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      const oldTodos = item.content.todos || [];
-      
-      // Try to preserve checked status of identical task text
-      item.content.todos = lines.map(line => {
-        const oldMatch = oldTodos.find(ot => ot.text === line);
-        return {
-          text: line,
-          completed: oldMatch ? oldMatch.completed : false
-        };
-      });
-      // Also write raw_text for searchability
-      item.content.raw_text = lines.join(', ');
-    }
+    item.content.todos = editTodos;
+    item.content.raw_text = editTodos.map(t => t.text).join(', ');
+    item.content.word_count = editTodos.map(t => t.text).join(' ').split(/\s+/).length;
+    item.content.reading_time_mins = 1;
+
     // Make sure we have a clean summary and todo tag
     item.ai_analysis = item.ai_analysis || {};
     item.ai_analysis.summary = 'To-Do Checklist';
