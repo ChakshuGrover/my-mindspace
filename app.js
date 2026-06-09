@@ -139,6 +139,12 @@ function initApp() {
         .catch((err) => console.error('Service Worker registration failed:', err));
     });
   }
+
+  // Fast check: if not logged in, skip loader and show landing page immediately
+  const savedToken = safeStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+  if (!savedToken) {
+    showLandingPage();
+  }
 }
 
 // --- Library Loaders ---
