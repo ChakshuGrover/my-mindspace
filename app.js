@@ -3532,8 +3532,8 @@ function renderSpatialCanvas(items) {
       const cols = 4;
       const col = unplacedCount % cols;
       const row = Math.floor(unplacedCount / cols);
-      item.canvas_x = col * 380 - 570;
-      item.canvas_y = row * 280 - 280;
+      item.canvas_x = col * 310 - 465;
+      item.canvas_y = row * 210 - 210;
       unplacedCount++;
       debounceSaveItem(item);
     }
@@ -3855,7 +3855,7 @@ function clusterByTag() {
   if (N === 0) return;
   
   // 2. Space cluster centers in a circle around (0,0)
-  const clusterRadius = Math.max(500, N * 150);
+  const clusterRadius = Math.max(320, N * 90);
   
   const container = document.getElementById('canvas-nodes-container');
   
@@ -3864,36 +3864,13 @@ function clusterByTag() {
     const centerX = Math.round(clusterRadius * Math.cos(angle));
     const centerY = Math.round(clusterRadius * Math.sin(angle));
     
-    // Draw tag label in container
-    if (container) {
-      const label = document.createElement('div');
-      label.className = 'canvas-cluster-label';
-      label.style.position = 'absolute';
-      label.style.left = `${centerX}px`;
-      label.style.top = `${centerY - 180}px`;
-      label.style.transform = 'translate(-50%, -50%)';
-      label.style.fontSize = '1.25rem';
-      label.style.fontWeight = '700';
-      label.style.color = 'var(--accent-purple)';
-      label.style.background = 'rgba(18, 16, 22, 0.82)';
-      label.style.padding = '6px 18px';
-      label.style.borderRadius = '24px';
-      label.style.border = '1px solid var(--border-glass)';
-      label.style.pointerEvents = 'none';
-      label.style.whiteSpace = 'nowrap';
-      label.style.zIndex = '5';
-      label.style.boxShadow = '0 0 20px rgba(168, 85, 247, 0.2)';
-      label.textContent = tag === 'Untagged' ? 'Untagged' : `#${tag}`;
-      container.appendChild(label);
-    }
-    
     // Place items of this cluster in a circle/orbit around its center
     const groupItems = tagGroups[tag];
     const M = groupItems.length;
+    const itemRadius = M > 1 ? Math.max(100, M * 30) : 0;
+    
     groupItems.forEach((item, j) => {
       const itemAngle = M > 1 ? (2 * Math.PI * j) / M : 0;
-      const itemRadius = M > 1 ? 160 : 0;
-      
       item.canvas_x = Math.round(centerX + itemRadius * Math.cos(itemAngle));
       item.canvas_y = Math.round(centerY + itemRadius * Math.sin(itemAngle));
       
@@ -3905,11 +3882,6 @@ function clusterByTag() {
   renderSpatialCanvas(items);
   
   // Redraw the cluster labels as the above renderSpatialCanvas clears them on re-render
-  // We can just append them right after drawing nodes!
-  // Wait, that means renderSpatialCanvas is called, so we should just run the label creation after it!
-  // Let's copy label creation to run *after* renderSpatialCanvas.
-  
-  // Clear any existing cluster labels
   document.querySelectorAll('.canvas-cluster-label').forEach(el => el.remove());
   
   tags.forEach((tag, i) => {
@@ -3917,12 +3889,16 @@ function clusterByTag() {
     const centerX = Math.round(clusterRadius * Math.cos(angle));
     const centerY = Math.round(clusterRadius * Math.sin(angle));
     
+    const groupItems = tagGroups[tag];
+    const M = groupItems.length;
+    const itemRadius = M > 1 ? Math.max(100, M * 30) : 0;
+    
     if (container) {
       const label = document.createElement('div');
       label.className = 'canvas-cluster-label';
       label.style.position = 'absolute';
       label.style.left = `${centerX}px`;
-      label.style.top = `${centerY - 180}px`;
+      label.style.top = `${centerY - itemRadius - 80}px`;
       label.style.transform = 'translate(-50%, -50%)';
       label.style.fontSize = '1.25rem';
       label.style.fontWeight = '700';
