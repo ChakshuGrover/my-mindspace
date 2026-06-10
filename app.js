@@ -52,6 +52,8 @@ let canvasNodeDragged = false;
 const nodeSaveDebounceTimers = {};
 let canvasPendingCoords = null;
 let lastRenderedSpatialItems = [];
+let physicsAnimationId = null;
+let physicsAlpha = 0;
 
 // Default credentials for sandbox testing (User can override in settings)
 const DEFAULT_CLIENT_ID = '345073896444-jvm03jjn5dn6pfh95d7jbtlh4shq4ooj.apps.googleusercontent.com';
@@ -2031,10 +2033,12 @@ function renderGrid() {
         emptyState.setAttribute('hidden', 'true');
         document.getElementById('spatial-canvas-viewport').style.display = 'block';
         renderSpatialCanvas(filteredItems);
+        startPhysicsSimulation(filteredItems);
       }
     }
     return;
   } else {
+    stopPhysicsSimulation();
     const spatialView = document.getElementById('spatial-canvas-view');
     if (spatialView) spatialView.setAttribute('hidden', 'true');
     if (othersSection) othersSection.removeAttribute('hidden');
@@ -3540,7 +3544,12 @@ function getCanvasCenterCoords() {
 }
 
 function getNodeSize(item, items) {
-  if (canvasViewMode !== 'graph') return { w: 280, h: 150 };
+  if (canvasViewMode !== 'graph') {
+    const cardEl = document.querySelector(`.canvas-node-card[data-id="${item.id}"]`);
+    const w = 280;
+    const h = cardEl && cardEl.offsetHeight > 0 ? cardEl.offsetHeight : 200;
+    return { w, h };
+  }
   let degree = (item.connections || []).length;
   if (item.ai_analysis && item.ai_analysis.tags) {
     const ignoredTags = new Set(['inbox', 'link', 'web', 'to-read', 'todo', 'note', 'article', 'color', 'saved note']);
@@ -3563,9 +3572,6 @@ function getNodeSize(item, items) {
 
 function renderSpatialCanvas(items) {
   lastRenderedSpatialItems = items;
-  
-  // Clear any existing cluster labels to prevent duplicates or ghosts
-  document.querySelectorAll('.canvas-cluster-label').forEach(el => el.remove());
   
   let unplacedCount = 0;
   items.forEach((item) => {
@@ -3840,6 +3846,7 @@ function initSpatialCanvasEvents() {
       
       drawConnections(lastRenderedSpatialItems);
       updateMinimap(lastRenderedSpatialItems);
+      triggerPhysicsBump(lastRenderedSpatialItems || driveFiles || []);
     } else if (isPanning) {
       canvasPanX = panStartOffset.x + (e.clientX - panStart.x);
       canvasPanY = panStartOffset.y + (e.clientY - panStart.y);
@@ -3865,9 +3872,6 @@ function initSpatialCanvasEvents() {
   if (btnZoomFit) btnZoomFit.addEventListener('click', zoomToFit);
   if (btnLinkMode) btnLinkMode.addEventListener('click', toggleLinkMode);
   
-  const btnCluster = document.getElementById('btn-canvas-cluster');
-  if (btnCluster) btnCluster.addEventListener('click', () => clusterByTag('circular'));
-
   const btnViewMode = document.getElementById('btn-canvas-view-mode');
   if (btnViewMode) {
     updateCanvasViewModeButton();
@@ -3877,8 +3881,282 @@ function initSpatialCanvasEvents() {
       updateCanvasViewModeButton();
       renderSpatialCanvas(lastRenderedSpatialItems || driveFiles || []);
       zoomToFit();
+      startPhysicsSimulation(lastRenderedSpatialItems || driveFiles || []);
       showToast(`Switched to ${canvasViewMode === 'graph' ? 'Graph' : 'Card'} View!`);
     });
+  }
+
+  const btnPhysics = document.getElementById('btn-canvas-physics');
+  if (btnPhysics) {
+    btnPhysics.addEventListener('click', () => {
+      const items = lastRenderedSpatialItems || driveFiles || [];
+      const validItems = items.filter(item => !item.isPlaceholder);
+      if (validItems.length === 0) {
+        showToast('No cards to arrange!');
+        return;
+      }
+      startPhysicsSimulation(validItems);
+      showToast('Running physics layout simulation...');
+    });
+  }
+}
+
+function startPhysicsSimulation(items, initialAlpha = 1.0) {
+  const validItems = items.filter(item => !item.isPlaceholder);
+  if (validItems.length === 0) return;
+
+  console.log(`[Physics] Starting simulation for ${validItems.length} items. ViewMode: ${canvasViewMode}, Alpha: ${initialAlpha}`);
+
+  // Initialize velocities if not present
+  validItems.forEach(item => {
+    if (item.vx === undefined) item.vx = 0;
+    if (item.vy === undefined) item.vy = 0;
+    if (physicsAnimationId === null) {
+      item._initial_x = item.canvas_x || 0;
+      item._initial_y = item.canvas_y || 0;
+    }
+  });
+
+  physicsAlpha = Math.max(physicsAlpha, initialAlpha);
+
+  if (physicsAnimationId) {
+    return;
+  }
+
+  function tick() {
+    if (physicsAlpha < 0.005) {
+      physicsAnimationId = null;
+      // Once settled, save positions to Google Drive (only for items that moved significantly)
+      validItems.forEach(item => {
+        const dx = (item.canvas_x || 0) - (item._initial_x || 0);
+        const dy = (item.canvas_y || 0) - (item._initial_y || 0);
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+          debounceSaveItem(item);
+        }
+        delete item._initial_x;
+        delete item._initial_y;
+      });
+      return;
+    }
+
+    const isGraph = canvasViewMode === 'graph';
+    // Parameters adjusted for graph vs card mode
+    const repulsionStrength = isGraph ? 1500 : 8000;
+    const linkStrength = isGraph ? 0.08 : 0.05;
+    const tagStrength = isGraph ? 0.04 : 0.02;
+    const gravityStrength = isGraph ? 0.015 : 0.01;
+    const targetDistance = isGraph ? 80 : 320;
+    const damping = 0.85;
+
+    const N = validItems.length;
+    const fx = new Array(N).fill(0);
+    const fy = new Array(N).fill(0);
+
+    // 1. Repulsion between all nodes
+    for (let i = 0; i < N; i++) {
+      const A = validItems[i];
+      for (let j = i + 1; j < N; j++) {
+        const B = validItems[j];
+        let dx = (B.canvas_x || 0) - (A.canvas_x || 0);
+        let dy = (B.canvas_y || 0) - (A.canvas_y || 0);
+        if (dx === 0 && dy === 0) {
+          dx = Math.random() - 0.5;
+          dy = Math.random() - 0.5;
+        }
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        // Repulsion force
+        const force = repulsionStrength / Math.max(15, dist);
+        const f_x = (dx / dist) * force;
+        const f_y = (dy / dist) * force;
+
+        fx[i] -= f_x;
+        fy[i] -= f_y;
+        fx[j] += f_x;
+        fy[j] += f_y;
+      }
+    }
+
+    // 2. Attraction along connections (links)
+    validItems.forEach((A, i) => {
+      if (A.connections) {
+        A.connections.forEach(targetId => {
+          const j = validItems.findIndex(x => x.id === targetId);
+          if (j !== -1) {
+            const B = validItems[j];
+            const dx = (B.canvas_x || 0) - (A.canvas_x || 0);
+            const dy = (B.canvas_y || 0) - (A.canvas_y || 0);
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            
+            // Spring force
+            const diff = dist - targetDistance;
+            const force = diff * linkStrength;
+            const f_x = (dx / dist) * force;
+            const f_y = (dy / dist) * force;
+
+            fx[i] += f_x;
+            fy[i] += f_y;
+            fx[j] -= f_x;
+            fy[j] -= f_y;
+          }
+        });
+      }
+    });
+
+    // 3. Tag attraction (nodes sharing the same tag are gently pulled together)
+    const ignoredTags = new Set(['inbox', 'link', 'web', 'to-read', 'todo', 'note', 'article', 'color', 'saved note']);
+    for (let i = 0; i < N; i++) {
+      const A = validItems[i];
+      if (!A.ai_analysis || !A.ai_analysis.tags) continue;
+      const tagsA = A.ai_analysis.tags.map(t => t.toLowerCase()).filter(t => !ignoredTags.has(t));
+      if (tagsA.length === 0) continue;
+
+      for (let j = i + 1; j < N; j++) {
+        const B = validItems[j];
+        if (!B.ai_analysis || !B.ai_analysis.tags) continue;
+        const tagsB = B.ai_analysis.tags.map(t => t.toLowerCase());
+        const sharedTags = tagsA.filter(t => tagsB.includes(t));
+        
+        if (sharedTags.length > 0) {
+          const dx = (B.canvas_x || 0) - (A.canvas_x || 0);
+          const dy = (B.canvas_y || 0) - (A.canvas_y || 0);
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          
+          if (dist > targetDistance) {
+            const force = (dist - targetDistance) * tagStrength * sharedTags.length;
+            const f_x = (dx / dist) * force;
+            const f_y = (dy / dist) * force;
+
+            fx[i] += f_x;
+            fy[i] += f_y;
+            fx[j] -= f_x;
+            fy[j] -= f_y;
+          }
+        }
+      }
+    }
+
+    // 4. Gravity / Centering force (pull toward origin (0, 0))
+    validItems.forEach((A, i) => {
+      fx[i] -= (A.canvas_x || 0) * gravityStrength;
+      fy[i] -= (A.canvas_y || 0) * gravityStrength;
+    });
+
+    // 5. Update positions and velocities
+    validItems.forEach((A, i) => {
+      if ((activeDragItem && activeDragItem.id === A.id) || A.pinned) {
+        A.vx = 0;
+        A.vy = 0;
+        return;
+      }
+
+      A.vx = ((A.vx || 0) + fx[i]) * damping;
+      A.vy = ((A.vy || 0) + fy[i]) * damping;
+
+      const maxStep = 45;
+      const stepDist = Math.sqrt(A.vx * A.vx + A.vy * A.vy);
+      if (stepDist > maxStep) {
+        A.vx = (A.vx / stepDist) * maxStep;
+        A.vy = (A.vy / stepDist) * maxStep;
+      }
+
+      A.canvas_x = Math.round((A.canvas_x || 0) + A.vx * physicsAlpha);
+      A.canvas_y = Math.round((A.canvas_y || 0) + A.vy * physicsAlpha);
+    });
+
+    // 6. Hard Constraint: Resolve overlaps directly by shifting positions (Position Projection)
+    for (let iter = 0; iter < 2; iter++) {
+      for (let i = 0; i < N; i++) {
+        const A = validItems[i];
+        const isAPinned = A.pinned || (activeDragItem && activeDragItem.id === A.id);
+        const sizeA = getNodeSize(A, validItems);
+
+        for (let j = i + 1; j < N; j++) {
+          const B = validItems[j];
+          const isBPinned = B.pinned || (activeDragItem && activeDragItem.id === B.id);
+          
+          if (isAPinned && isBPinned) continue; // Both are static, cannot move either
+
+          const sizeB = getNodeSize(B, validItems);
+
+          let dx = (B.canvas_x || 0) - (A.canvas_x || 0);
+          let dy = (B.canvas_y || 0) - (A.canvas_y || 0);
+
+          const padding = isGraph ? 15 : 40;
+          const hw = (sizeA.w + sizeB.w) / 2 + padding;
+          const hh = (sizeA.h + sizeB.h) / 2 + padding;
+
+          const overlapX = hw - Math.abs(dx);
+          const overlapY = hh - Math.abs(dy);
+
+          if (overlapX > 0 && overlapY > 0) {
+            // Overlapping! Push them apart along the axis of minimum penetration.
+            if (dx === 0 && dy === 0) {
+              dx = Math.random() - 0.5;
+              dy = Math.random() - 0.5;
+            }
+
+            if (overlapX < overlapY) {
+              const pushX = overlapX * Math.sign(dx);
+              if (isAPinned) {
+                B.canvas_x = Math.round(B.canvas_x + pushX);
+                B.vx *= 0.5;
+              } else if (isBPinned) {
+                A.canvas_x = Math.round(A.canvas_x - pushX);
+                A.vx *= 0.5;
+              } else {
+                A.canvas_x = Math.round(A.canvas_x - pushX / 2);
+                B.canvas_x = Math.round(B.canvas_x + pushX / 2);
+                A.vx *= 0.5;
+                B.vx *= 0.5;
+              }
+            } else {
+              const pushY = overlapY * Math.sign(dy);
+              if (isAPinned) {
+                B.canvas_y = Math.round(B.canvas_y + pushY);
+                B.vy *= 0.5;
+              } else if (isBPinned) {
+                A.canvas_y = Math.round(A.canvas_y - pushY);
+                A.vy *= 0.5;
+              } else {
+                A.canvas_y = Math.round(A.canvas_y - pushY / 2);
+                B.canvas_y = Math.round(B.canvas_y + pushY / 2);
+                A.vy *= 0.5;
+                B.vy *= 0.5;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 7. Update DOM element positions
+    validItems.forEach(A => {
+      const cardEl = document.querySelector(`.canvas-node-card[data-id="${A.id}"]`);
+      if (cardEl) {
+        cardEl.style.left = `${A.canvas_x}px`;
+        cardEl.style.top = `${A.canvas_y}px`;
+      }
+    });
+
+    drawConnections(lastRenderedSpatialItems);
+    updateMinimap(lastRenderedSpatialItems);
+
+    physicsAlpha *= 0.96;
+    physicsAnimationId = requestAnimationFrame(tick);
+  }
+
+  physicsAnimationId = requestAnimationFrame(tick);
+}
+
+function triggerPhysicsBump(items) {
+  startPhysicsSimulation(items, 0.45);
+}
+
+function stopPhysicsSimulation() {
+  if (physicsAnimationId) {
+    cancelAnimationFrame(physicsAnimationId);
+    physicsAnimationId = null;
   }
 }
 
@@ -3894,105 +4172,6 @@ function updateCanvasViewModeButton() {
     btnViewMode.textContent = '🕸️';
     btnViewMode.title = 'Switch to Graph View';
   }
-}
-
-function clusterByTag() {
-  const items = lastRenderedSpatialItems || driveFiles || [];
-  const validItems = items.filter(item => !item.isPlaceholder);
-  if (validItems.length === 0) {
-    showToast('No cards to cluster!');
-    return;
-  }
-  
-  // 1. Group items by tag
-  const tagGroups = {};
-  const ignoredTags = new Set(['inbox', 'link', 'web', 'to-read', 'todo', 'note', 'article', 'color', 'saved note']);
-  
-  validItems.forEach(item => {
-    let bestTag = 'Untagged';
-    if (item.ai_analysis && item.ai_analysis.tags && item.ai_analysis.tags.length > 0) {
-      const validTags = item.ai_analysis.tags
-        .map(t => t.toLowerCase())
-        .filter(t => !ignoredTags.has(t));
-      if (validTags.length > 0) {
-        bestTag = validTags[0]; // Use the first valid tag
-      }
-    }
-    
-    if (!tagGroups[bestTag]) {
-      tagGroups[bestTag] = [];
-    }
-    tagGroups[bestTag].push(item);
-  });
-  
-  const tags = Object.keys(tagGroups);
-  const N = tags.length;
-  if (N === 0) return;
-  
-  const container = document.getElementById('canvas-nodes-container');
-  
-  // 2. Circular Constellation Layout
-  const clusterRadius = Math.max(320, N * 90);
-  
-  tags.forEach((tag, i) => {
-    const angle = (2 * Math.PI * i) / N;
-    const centerX = Math.round(clusterRadius * Math.cos(angle));
-    const centerY = Math.round(clusterRadius * Math.sin(angle));
-    
-    // Place items of this cluster in a circle/orbit around its center
-    const groupItems = tagGroups[tag];
-    const M = groupItems.length;
-    const itemRadius = M > 1 ? Math.max(100, M * 30) : 0;
-    
-    groupItems.forEach((item, j) => {
-      const itemAngle = M > 1 ? (2 * Math.PI * j) / M : 0;
-      item.canvas_x = Math.round(centerX + itemRadius * Math.cos(itemAngle));
-      item.canvas_y = Math.round(centerY + itemRadius * Math.sin(itemAngle));
-      
-      debounceSaveItem(item);
-    });
-  });
-  
-  // Re-render nodes
-  renderSpatialCanvas(items);
-  
-  // Redraw the cluster labels
-  document.querySelectorAll('.canvas-cluster-label').forEach(el => el.remove());
-  tags.forEach((tag, i) => {
-    const angle = (2 * Math.PI * i) / N;
-    const centerX = Math.round(clusterRadius * Math.cos(angle));
-    const centerY = Math.round(clusterRadius * Math.sin(angle));
-    
-    const groupItems = tagGroups[tag];
-    const M = groupItems.length;
-    const itemRadius = M > 1 ? Math.max(100, M * 30) : 0;
-    
-    if (container) {
-      const label = document.createElement('div');
-      label.className = 'canvas-cluster-label';
-      label.style.position = 'absolute';
-      label.style.left = `${centerX}px`;
-      label.style.top = `${centerY - itemRadius - 80}px`;
-      label.style.transform = 'translate(-50%, -50%)';
-      label.style.fontSize = '1.25rem';
-      label.style.fontWeight = '700';
-      label.style.color = 'var(--accent-purple)';
-      label.style.background = 'rgba(18, 16, 22, 0.82)';
-      label.style.padding = '6px 18px';
-      label.style.borderRadius = '24px';
-      label.style.border = '1px solid var(--border-glass)';
-      label.style.pointerEvents = 'none';
-      label.style.whiteSpace = 'nowrap';
-      label.style.zIndex = '5';
-      label.style.boxShadow = '0 0 20px rgba(168, 85, 247, 0.2)';
-      label.textContent = tag === 'Untagged' ? 'Untagged' : `#${tag}`;
-      container.appendChild(label);
-    }
-  });
-
-  // Auto zoom to fit clusters
-  zoomToFit();
-  showToast('Clustered by tag (Constellation)!');
 }
 
 
