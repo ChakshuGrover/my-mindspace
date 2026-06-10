@@ -62,6 +62,37 @@ const STORAGE_KEYS = {
 };
 
 // --- Local Cache Helpers ---
+function sanitizeMindItem(item) {
+  if (!item) return null;
+  if (!item.type) item.type = 'note';
+  if (!item.title) item.title = 'Untitled Note';
+  if (!item.content) {
+    item.content = {
+      raw_text: '',
+      todos: []
+    };
+  } else {
+    if (!item.content.raw_text) item.content.raw_text = '';
+    if (!item.content.todos) item.content.todos = [];
+  }
+  if (!item.ai_analysis) {
+    item.ai_analysis = {
+      summary: '',
+      detailed_summary: '',
+      vibe: '',
+      tags: [],
+      key_takeaways: []
+    };
+  } else {
+    if (!item.ai_analysis.summary) item.ai_analysis.summary = '';
+    if (!item.ai_analysis.detailed_summary) item.ai_analysis.detailed_summary = '';
+    if (!item.ai_analysis.vibe) item.ai_analysis.vibe = '';
+    if (!item.ai_analysis.tags) item.ai_analysis.tags = [];
+    if (!item.ai_analysis.key_takeaways) item.ai_analysis.key_takeaways = [];
+  }
+  return item;
+}
+
 function loadCachedData() {
   try {
     const cachedFolders = safeStorage.getItem('mymind_cached_folders');
@@ -70,7 +101,7 @@ function loadCachedData() {
     }
     const cachedFiles = safeStorage.getItem('mymind_cached_files');
     if (cachedFiles) {
-      driveFiles = JSON.parse(cachedFiles);
+      driveFiles = JSON.parse(cachedFiles).map(sanitizeMindItem).filter(Boolean);
     }
   } catch (e) {
     console.error('Error loading cached data:', e);
@@ -845,7 +876,7 @@ async function loadMindItems() {
           if (item.type === 'color' || item.type === 'quote') {
             item.type = 'note';
           }
-          return item;
+          return sanitizeMindItem(item);
         } catch (e) {
           console.error(`Error loading file content for ${file.name}:`, e);
           // If fetch fails but we have a cached copy, keep the cached copy as fallback
@@ -1919,11 +1950,13 @@ async function deleteItem(itemId, driveFileId) {
   });
 }
 
-// --- Masonry Rendering Engine ---
 function renderGrid() {
   const grid = document.getElementById('mind-grid');
   const emptyState = document.getElementById('empty-state');
-  
+
+  // Sanitize all items to ensure all nested properties exist
+  driveFiles.forEach(sanitizeMindItem);
+
   grid.innerHTML = '';
   
   const query = document.getElementById('search-input').value.trim().toLowerCase();
