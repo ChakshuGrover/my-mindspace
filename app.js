@@ -36,6 +36,7 @@ let isEditingDetail = false;
 // --- Spatial Canvas (Mind Map) Global State ---
 let currentViewMode = 'grid'; // 'grid' or 'spatial'
 let canvasZoom = 1;
+let canvasViewMode = localStorage.getItem('mymind_canvas_view_mode') || 'cards';
 let canvasPanX = 0;
 let canvasPanY = 0;
 let isPanning = false;
@@ -3312,17 +3313,13 @@ function drawConnections(items) {
   svg.innerHTML = '';
   const renderedLineKeys = new Set();
   
-  // 1. Draw Manual User-created Connections (Glowing solid purple curves)
+  // 1. Draw Manual User-created Connections (Glowing solid purple curves/lines)
   items.forEach(A => {
     if (!A.connections || A.connections.length === 0) return;
     
-    const elA = document.querySelector(`.canvas-node-card[data-id="${A.id}"]`);
-    if (!elA) return;
-    
-    const wA = elA.offsetWidth || 280;
-    const hA = elA.offsetHeight || 150;
-    const x1 = (A.canvas_x || 0) + wA / 2;
-    const y1 = (A.canvas_y || 0) + hA / 2;
+    const sizeA = getNodeSize(A, items);
+    const x1 = (A.canvas_x || 0) + sizeA.w / 2;
+    const y1 = (A.canvas_y || 0) + sizeA.h / 2;
     
     A.connections.forEach(targetId => {
       const lineKey = A.id < targetId ? `${A.id}-${targetId}` : `${targetId}-${A.id}`;
@@ -3331,13 +3328,9 @@ function drawConnections(items) {
       const B = items.find(x => x.id === targetId);
       if (!B) return;
       
-      const elB = document.querySelector(`.canvas-node-card[data-id="${B.id}"]`);
-      if (!elB) return;
-      
-      const wB = elB.offsetWidth || 280;
-      const hB = elB.offsetHeight || 150;
-      const x2 = (B.canvas_x || 0) + wB / 2;
-      const y2 = (B.canvas_y || 0) + hB / 2;
+      const sizeB = getNodeSize(B, items);
+      const x2 = (B.canvas_x || 0) + sizeB.w / 2;
+      const y2 = (B.canvas_y || 0) + sizeB.h / 2;
       
       const dx = x2 - x1;
       const dy = y2 - y1;
@@ -3346,11 +3339,13 @@ function drawConnections(items) {
       const cx2 = x2 - dx * 0.4;
       const cy2 = y2;
       
-      const pathData = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+      const pathData = canvasViewMode === 'graph'
+        ? `M ${x1} ${y1} L ${x2} ${y2}`
+        : `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
       
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', pathData);
-      path.setAttribute('class', 'canvas-connection-line');
+      path.setAttribute('class', canvasViewMode === 'graph' ? 'canvas-connection-line--graph' : 'canvas-connection-line');
       path.dataset.sourceId = A.id;
       path.dataset.targetId = B.id;
       
@@ -3380,7 +3375,7 @@ function drawConnections(items) {
     });
   });
 
-  // 2. Draw Autoformed Semantic Connections (Soft dotted cyan curves)
+  // 2. Draw Autoformed Semantic Connections (Soft dotted curves/lines)
   const ignoredTags = new Set(['inbox', 'link', 'web', 'to-read', 'todo', 'note', 'article', 'color', 'saved note']);
   
   for (let i = 0; i < items.length; i++) {
@@ -3400,19 +3395,13 @@ function drawConnections(items) {
       const lineKey = A.id < B.id ? `${A.id}-${B.id}` : `${B.id}-${A.id}`;
       if (renderedLineKeys.has(lineKey)) continue;
       
-      const elA = document.querySelector(`.canvas-node-card[data-id="${A.id}"]`);
-      const elB = document.querySelector(`.canvas-node-card[data-id="${B.id}"]`);
-      if (!elA || !elB) continue;
+      const sizeA = getNodeSize(A, items);
+      const x1 = (A.canvas_x || 0) + sizeA.w / 2;
+      const y1 = (A.canvas_y || 0) + sizeA.h / 2;
       
-      const wA = elA.offsetWidth || 280;
-      const hA = elA.offsetHeight || 150;
-      const x1 = (A.canvas_x || 0) + wA / 2;
-      const y1 = (A.canvas_y || 0) + hA / 2;
-      
-      const wB = elB.offsetWidth || 280;
-      const hB = elB.offsetHeight || 150;
-      const x2 = (B.canvas_x || 0) + wB / 2;
-      const y2 = (B.canvas_y || 0) + hB / 2;
+      const sizeB = getNodeSize(B, items);
+      const x2 = (B.canvas_x || 0) + sizeB.w / 2;
+      const y2 = (B.canvas_y || 0) + sizeB.h / 2;
       
       const dx = x2 - x1;
       const dy = y2 - y1;
@@ -3421,11 +3410,13 @@ function drawConnections(items) {
       const cx2 = x2 - dx * 0.4;
       const cy2 = y2;
       
-      const pathData = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+      const pathData = canvasViewMode === 'graph'
+        ? `M ${x1} ${y1} L ${x2} ${y2}`
+        : `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
       
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', pathData);
-      path.setAttribute('class', 'canvas-connection-line--auto');
+      path.setAttribute('class', canvasViewMode === 'graph' ? 'canvas-connection-line--graph-auto' : 'canvas-connection-line--auto');
       path.setAttribute('title', `Connected via shared tag(s): ${overlapTags.join(', ')}`);
       path.dataset.sourceId = A.id;
       path.dataset.targetId = B.id;
@@ -3520,6 +3511,28 @@ function updateMinimap(items) {
   viewportBox.style.height = `${Math.max(4, viewMapBottom - viewMapTop)}px`;
 }
 
+function getNodeSize(item, items) {
+  if (canvasViewMode !== 'graph') return { w: 280, h: 150 };
+  let degree = (item.connections || []).length;
+  if (item.ai_analysis && item.ai_analysis.tags) {
+    const ignoredTags = new Set(['inbox', 'link', 'web', 'to-read', 'todo', 'note', 'article', 'color', 'saved note']);
+    const tagsA = item.ai_analysis.tags.map(t => t.toLowerCase()).filter(t => !ignoredTags.has(t));
+    if (tagsA.length > 0) {
+      items.forEach(other => {
+        if (other.id === item.id) return;
+        if (!other.ai_analysis || !other.ai_analysis.tags) return;
+        const tagsB = other.ai_analysis.tags.map(t => t.toLowerCase());
+        const hasOverlap = tagsA.some(tag => tagsB.includes(tag));
+        if (hasOverlap) {
+          degree++;
+        }
+      });
+    }
+  }
+  const size = Math.max(14, Math.min(36, 14 + degree * 2));
+  return { w: size, h: size };
+}
+
 function renderSpatialCanvas(items) {
   lastRenderedSpatialItems = items;
   
@@ -3547,6 +3560,12 @@ function renderSpatialCanvas(items) {
     const card = document.createElement('div');
     card.dataset.id = item.id;
     card.className = `mind-card mind-card--${item.type} color-${item.color || 'default'} canvas-node-card`;
+    
+    if (canvasViewMode === 'graph') {
+      card.classList.add('graph-mode');
+      const size = getNodeSize(item, items).w;
+      card.style.setProperty('--node-size', `${size}px`);
+    }
     
     card.style.left = `${item.canvas_x}px`;
     card.style.top = `${item.canvas_y}px`;
@@ -3646,6 +3665,13 @@ function renderSpatialCanvas(items) {
     
     if (isLinking && linkSourceId === item.id) {
       card.classList.add('linking-source');
+    }
+
+    if (canvasViewMode === 'graph') {
+      const label = document.createElement('div');
+      label.className = 'graph-node-label';
+      label.textContent = item.title;
+      card.appendChild(label);
     }
 
     container.appendChild(card);
@@ -3818,10 +3844,40 @@ function initSpatialCanvasEvents() {
   if (btnLinkMode) btnLinkMode.addEventListener('click', toggleLinkMode);
   
   const btnCluster = document.getElementById('btn-canvas-cluster');
-  if (btnCluster) btnCluster.addEventListener('click', clusterByTag);
+  if (btnCluster) btnCluster.addEventListener('click', () => clusterByTag('circular'));
+  
+  const btnClusterGrid = document.getElementById('btn-canvas-cluster-grid');
+  if (btnClusterGrid) btnClusterGrid.addEventListener('click', () => clusterByTag('grid'));
+
+  const btnViewMode = document.getElementById('btn-canvas-view-mode');
+  if (btnViewMode) {
+    updateCanvasViewModeButton();
+    btnViewMode.addEventListener('click', () => {
+      canvasViewMode = canvasViewMode === 'cards' ? 'graph' : 'cards';
+      localStorage.setItem('mymind_canvas_view_mode', canvasViewMode);
+      updateCanvasViewModeButton();
+      renderSpatialCanvas(lastRenderedSpatialItems || driveFiles || []);
+      zoomToFit();
+      showToast(`Switched to ${canvasViewMode === 'graph' ? 'Graph' : 'Card'} View!`);
+    });
+  }
 }
 
-function clusterByTag() {
+function updateCanvasViewModeButton() {
+  const btnViewMode = document.getElementById('btn-canvas-view-mode');
+  if (!btnViewMode) return;
+  if (canvasViewMode === 'graph') {
+    btnViewMode.classList.add('active');
+    btnViewMode.textContent = '📄';
+    btnViewMode.title = 'Switch to Card View';
+  } else {
+    btnViewMode.classList.remove('active');
+    btnViewMode.textContent = '🕸️';
+    btnViewMode.title = 'Switch to Graph View';
+  }
+}
+
+function clusterByTag(layoutType = 'circular') {
   const items = lastRenderedSpatialItems || driveFiles || [];
   const validItems = items.filter(item => !item.isPlaceholder);
   if (validItems.length === 0) {
@@ -3854,71 +3910,139 @@ function clusterByTag() {
   const N = tags.length;
   if (N === 0) return;
   
-  // 2. Space cluster centers in a circle around (0,0)
-  const clusterRadius = Math.max(320, N * 90);
-  
   const container = document.getElementById('canvas-nodes-container');
   
-  tags.forEach((tag, i) => {
-    const angle = (2 * Math.PI * i) / N;
-    const centerX = Math.round(clusterRadius * Math.cos(angle));
-    const centerY = Math.round(clusterRadius * Math.sin(angle));
-    
-    // Place items of this cluster in a circle/orbit around its center
-    const groupItems = tagGroups[tag];
-    const M = groupItems.length;
-    const itemRadius = M > 1 ? Math.max(100, M * 30) : 0;
-    
-    groupItems.forEach((item, j) => {
-      const itemAngle = M > 1 ? (2 * Math.PI * j) / M : 0;
-      item.canvas_x = Math.round(centerX + itemRadius * Math.cos(itemAngle));
-      item.canvas_y = Math.round(centerY + itemRadius * Math.sin(itemAngle));
+  if (layoutType === 'grid') {
+    // 2. Grid Layout of Clusters (2 columns of clusters)
+    const cols = 2;
+    tags.forEach((tag, i) => {
+      const clusterCol = i % cols;
+      const clusterRow = Math.floor(i / cols);
       
-      debounceSaveItem(item);
+      const centerX = clusterCol * 750 - (Math.min(N, cols) - 1) * 375;
+      const centerY = clusterRow * 600 - (Math.ceil(N / cols) - 1) * 300;
+      
+      const groupItems = tagGroups[tag];
+      const M = groupItems.length;
+      
+      // Sub-grid layout for cards in this cluster (2 columns of cards)
+      const cardCols = 2;
+      const subGridW = (Math.min(M, cardCols) - 1) * 310;
+      const subGridH = (Math.ceil(M / cardCols) - 1) * 210;
+      
+      groupItems.forEach((item, j) => {
+        const itemCol = j % cardCols;
+        const itemRow = Math.floor(j / cardCols);
+        
+        item.canvas_x = Math.round(centerX + itemCol * 310 - subGridW / 2);
+        item.canvas_y = Math.round(centerY + itemRow * 210 - subGridH / 2);
+        
+        debounceSaveItem(item);
+      });
     });
-  });
-  
-  // Re-render nodes (this will clear previous and draw new card placements)
-  renderSpatialCanvas(items);
-  
-  // Redraw the cluster labels as the above renderSpatialCanvas clears them on re-render
-  document.querySelectorAll('.canvas-cluster-label').forEach(el => el.remove());
-  
-  tags.forEach((tag, i) => {
-    const angle = (2 * Math.PI * i) / N;
-    const centerX = Math.round(clusterRadius * Math.cos(angle));
-    const centerY = Math.round(clusterRadius * Math.sin(angle));
     
-    const groupItems = tagGroups[tag];
-    const M = groupItems.length;
-    const itemRadius = M > 1 ? Math.max(100, M * 30) : 0;
+    // Re-render nodes
+    renderSpatialCanvas(items);
     
-    if (container) {
-      const label = document.createElement('div');
-      label.className = 'canvas-cluster-label';
-      label.style.position = 'absolute';
-      label.style.left = `${centerX}px`;
-      label.style.top = `${centerY - itemRadius - 80}px`;
-      label.style.transform = 'translate(-50%, -50%)';
-      label.style.fontSize = '1.25rem';
-      label.style.fontWeight = '700';
-      label.style.color = 'var(--accent-purple)';
-      label.style.background = 'rgba(18, 16, 22, 0.82)';
-      label.style.padding = '6px 18px';
-      label.style.borderRadius = '24px';
-      label.style.border = '1px solid var(--border-glass)';
-      label.style.pointerEvents = 'none';
-      label.style.whiteSpace = 'nowrap';
-      label.style.zIndex = '5';
-      label.style.boxShadow = '0 0 20px rgba(168, 85, 247, 0.2)';
-      label.textContent = tag === 'Untagged' ? 'Untagged' : `#${tag}`;
-      container.appendChild(label);
-    }
-  });
+    // Draw grid cluster labels centered above the cluster
+    document.querySelectorAll('.canvas-cluster-label').forEach(el => el.remove());
+    tags.forEach((tag, i) => {
+      const clusterCol = i % cols;
+      const clusterRow = Math.floor(i / cols);
+      const centerX = clusterCol * 750 - (Math.min(N, cols) - 1) * 375;
+      const centerY = clusterRow * 600 - (Math.ceil(N / cols) - 1) * 300;
+      
+      const groupItems = tagGroups[tag];
+      const M = groupItems.length;
+      const cardCols = 2;
+      const subGridH = (Math.ceil(M / cardCols) - 1) * 210;
+      
+      if (container) {
+        const label = document.createElement('div');
+        label.className = 'canvas-cluster-label';
+        label.style.position = 'absolute';
+        label.style.left = `${centerX}px`;
+        label.style.top = `${centerY - subGridH / 2 - 110}px`;
+        label.style.transform = 'translate(-50%, -50%)';
+        label.style.fontSize = '1.25rem';
+        label.style.fontWeight = '700';
+        label.style.color = 'var(--accent-purple)';
+        label.style.background = 'rgba(18, 16, 22, 0.82)';
+        label.style.padding = '6px 18px';
+        label.style.borderRadius = '24px';
+        label.style.border = '1px solid var(--border-glass)';
+        label.style.pointerEvents = 'none';
+        label.style.whiteSpace = 'nowrap';
+        label.style.zIndex = '5';
+        label.style.boxShadow = '0 0 20px rgba(168, 85, 247, 0.2)';
+        label.textContent = tag === 'Untagged' ? 'Untagged' : `#${tag}`;
+        container.appendChild(label);
+      }
+    });
+  } else {
+    // 2. Circular Constellation Layout
+    const clusterRadius = Math.max(320, N * 90);
+    
+    tags.forEach((tag, i) => {
+      const angle = (2 * Math.PI * i) / N;
+      const centerX = Math.round(clusterRadius * Math.cos(angle));
+      const centerY = Math.round(clusterRadius * Math.sin(angle));
+      
+      // Place items of this cluster in a circle/orbit around its center
+      const groupItems = tagGroups[tag];
+      const M = groupItems.length;
+      const itemRadius = M > 1 ? Math.max(100, M * 30) : 0;
+      
+      groupItems.forEach((item, j) => {
+        const itemAngle = M > 1 ? (2 * Math.PI * j) / M : 0;
+        item.canvas_x = Math.round(centerX + itemRadius * Math.cos(itemAngle));
+        item.canvas_y = Math.round(centerY + itemRadius * Math.sin(itemAngle));
+        
+        debounceSaveItem(item);
+      });
+    });
+    
+    // Re-render nodes
+    renderSpatialCanvas(items);
+    
+    // Redraw the cluster labels
+    document.querySelectorAll('.canvas-cluster-label').forEach(el => el.remove());
+    tags.forEach((tag, i) => {
+      const angle = (2 * Math.PI * i) / N;
+      const centerX = Math.round(clusterRadius * Math.cos(angle));
+      const centerY = Math.round(clusterRadius * Math.sin(angle));
+      
+      const groupItems = tagGroups[tag];
+      const M = groupItems.length;
+      const itemRadius = M > 1 ? Math.max(100, M * 30) : 0;
+      
+      if (container) {
+        const label = document.createElement('div');
+        label.className = 'canvas-cluster-label';
+        label.style.position = 'absolute';
+        label.style.left = `${centerX}px`;
+        label.style.top = `${centerY - itemRadius - 80}px`;
+        label.style.transform = 'translate(-50%, -50%)';
+        label.style.fontSize = '1.25rem';
+        label.style.fontWeight = '700';
+        label.style.color = 'var(--accent-purple)';
+        label.style.background = 'rgba(18, 16, 22, 0.82)';
+        label.style.padding = '6px 18px';
+        label.style.borderRadius = '24px';
+        label.style.border = '1px solid var(--border-glass)';
+        label.style.pointerEvents = 'none';
+        label.style.whiteSpace = 'nowrap';
+        label.style.zIndex = '5';
+        label.style.boxShadow = '0 0 20px rgba(168, 85, 247, 0.2)';
+        label.textContent = tag === 'Untagged' ? 'Untagged' : `#${tag}`;
+        container.appendChild(label);
+      }
+    });
+  }
 
   // Auto zoom to fit clusters
   zoomToFit();
-  showToast('Clustered by tag!');
+  showToast(`Clustered by tag (${layoutType === 'grid' ? 'Grid' : 'Constellation'})!`);
 }
 
 
