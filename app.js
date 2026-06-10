@@ -3313,6 +3313,17 @@ function drawConnections(items) {
   svg.innerHTML = '';
   const renderedLineKeys = new Set();
   
+  // Sync rendered node sizes on screen to reflect their degrees in Graph Mode
+  if (canvasViewMode === 'graph') {
+    items.forEach(item => {
+      const cardEl = document.querySelector(`.canvas-node-card[data-id="${item.id}"]`);
+      if (cardEl) {
+        const size = getNodeSize(item, items).w;
+        cardEl.style.setProperty('--node-size', `${size}px`);
+      }
+    });
+  }
+  
   // 1. Draw Manual User-created Connections (Glowing solid purple curves/lines)
   items.forEach(A => {
     if (!A.connections || A.connections.length === 0) return;
