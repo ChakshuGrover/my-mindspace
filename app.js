@@ -138,10 +138,8 @@ function initApp() {
   }
 
   // Load configuration and apply appearance
-  const savedMode = sanitizeValue(safeStorage.getItem('mymind_appearance_mode'), 'dark');
-  const savedTheme = sanitizeValue(safeStorage.getItem('mymind_appearance_theme'), 'default');
   const savedOpacity = sanitizeValue(safeStorage.getItem('mymind_card_opacity'), '0.50');
-  applyThemeAndOpacity(savedMode, savedTheme, savedOpacity);
+  applyCardOpacity(savedOpacity);
   initSettingsForm();
 
   // Bind Event Listeners
@@ -405,19 +403,7 @@ function setupEventListeners() {
   const settingsModalBackdrop = document.getElementById('settings-modal-backdrop');
   if (settingsModalBackdrop) settingsModalBackdrop.addEventListener('click', cancelSettings);
 
-  // Live appearance settings changes
-  const settingAppearanceMode = document.getElementById('setting-appearance-mode');
-  if (settingAppearanceMode) {
-    settingAppearanceMode.addEventListener('change', (e) => {
-      document.documentElement.setAttribute('data-mode', e.target.value);
-    });
-  }
-  const settingAppearanceTheme = document.getElementById('setting-appearance-theme');
-  if (settingAppearanceTheme) {
-    settingAppearanceTheme.addEventListener('change', (e) => {
-      document.documentElement.setAttribute('data-theme', e.target.value);
-    });
-  }
+
   const settingCardOpacity = document.getElementById('setting-card-opacity');
   if (settingCardOpacity) {
     settingCardOpacity.addEventListener('input', (e) => {
@@ -2773,29 +2759,21 @@ function sanitizeValue(val, fallback) {
   return str;
 }
 
-function applyThemeAndOpacity(mode, theme, opacity) {
+function applyCardOpacity(opacity) {
   const root = document.documentElement;
-  root.setAttribute('data-mode', sanitizeValue(mode, 'dark'));
-  root.setAttribute('data-theme', sanitizeValue(theme, 'default'));
   const activeOpacity = sanitizeValue(opacity, '0.50');
   root.style.setProperty('--card-opacity', activeOpacity);
 }
 
 function initSettingsForm() {
   const geminiKey = safeStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '';
-  const mode = sanitizeValue(safeStorage.getItem('mymind_appearance_mode'), 'dark');
-  const theme = sanitizeValue(safeStorage.getItem('mymind_appearance_theme'), 'default');
   const opacity = sanitizeValue(safeStorage.getItem('mymind_card_opacity'), '0.50');
 
   const geminiInput = document.getElementById('setting-gemini-key');
-  const modeInput = document.getElementById('setting-appearance-mode');
-  const themeInput = document.getElementById('setting-appearance-theme');
   const opacityInput = document.getElementById('setting-card-opacity');
   const opacityVal = document.getElementById('setting-opacity-val');
 
   if (geminiInput) geminiInput.value = geminiKey;
-  if (modeInput) modeInput.value = mode;
-  if (themeInput) themeInput.value = theme;
 
   const parsedOpacity = parseFloat(opacity);
   const opacityPercent = isNaN(parsedOpacity) ? 50 : Math.round(parsedOpacity * 100);
@@ -2804,31 +2782,25 @@ function initSettingsForm() {
 }
 
 function revertLiveSettings() {
-  const savedMode = sanitizeValue(safeStorage.getItem('mymind_appearance_mode'), 'dark');
-  const savedTheme = sanitizeValue(safeStorage.getItem('mymind_appearance_theme'), 'default');
   const savedOpacity = sanitizeValue(safeStorage.getItem('mymind_card_opacity'), '0.50');
-  applyThemeAndOpacity(savedMode, savedTheme, savedOpacity);
+  applyCardOpacity(savedOpacity);
 }
 
 async function saveSettings(e) {
   e.preventDefault();
   const geminiKey = document.getElementById('setting-gemini-key').value.trim();
-  const mode = document.getElementById('setting-appearance-mode').value;
-  const theme = document.getElementById('setting-appearance-theme').value;
   const opacity = (document.getElementById('setting-card-opacity').value / 100).toFixed(2);
 
   safeStorage.setItem(STORAGE_KEYS.GEMINI_KEY, geminiKey);
-  safeStorage.setItem('mymind_appearance_mode', mode);
-  safeStorage.setItem('mymind_appearance_theme', theme);
   safeStorage.setItem('mymind_card_opacity', opacity);
 
-  applyThemeAndOpacity(mode, theme, opacity);
+  applyCardOpacity(opacity);
 
   closeModal('settings-modal');
   showToast('Saving settings...');
 
   try {
-    await syncSettingsToDrive(geminiKey, mode, theme, opacity);
+    await syncSettingsToDrive(geminiKey, opacity);
     showToast('Settings saved & synced.');
   } catch (err) {
     showToast('Settings saved locally. Sync failed.');
@@ -2897,19 +2869,11 @@ async function loadSettingsFromDrive() {
         }
       }
 
-      if (remoteSettings.mode) {
-        safeStorage.setItem('mymind_appearance_mode', sanitizeValue(remoteSettings.mode, 'dark'));
-      }
-      if (remoteSettings.theme) {
-        safeStorage.setItem('mymind_appearance_theme', sanitizeValue(remoteSettings.theme, 'default'));
-      }
       if (remoteSettings.cardOpacity) {
         safeStorage.setItem('mymind_card_opacity', sanitizeValue(remoteSettings.cardOpacity, '0.50'));
       }
 
-      applyThemeAndOpacity(
-        sanitizeValue(remoteSettings.mode, 'dark'),
-        sanitizeValue(remoteSettings.theme, 'default'),
+      applyCardOpacity(
         sanitizeValue(remoteSettings.cardOpacity, '0.50')
       );
       
@@ -2923,21 +2887,17 @@ async function loadSettingsFromDrive() {
   }
 }
 
-async function syncSettingsToDrive(geminiKey, mode, theme, opacity) {
+async function syncSettingsToDrive(geminiKey, opacity) {
   if (!accessToken) return;
   setSyncStatus('syncing', 'Syncing Settings...');
   try {
     const encryptionKey = googleUserId || safeStorage.getItem('mymind_google_user_id') || 'mymindspace_fallback';
     const encryptedGeminiKey = encryptKey(geminiKey, encryptionKey);
 
-    const activeMode = sanitizeValue(mode || safeStorage.getItem('mymind_appearance_mode'), 'dark');
-    const activeTheme = sanitizeValue(theme || safeStorage.getItem('mymind_appearance_theme'), 'default');
     const activeOpacity = sanitizeValue(opacity || safeStorage.getItem('mymind_card_opacity'), '0.50');
 
     const settingsPayload = {
       encryptedGeminiKey,
-      mode: activeMode,
-      theme: activeTheme,
       cardOpacity: activeOpacity,
       updated_at: new Date().toISOString()
     };
