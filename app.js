@@ -48,6 +48,7 @@ let activeDragItem = null;
 let activeDragStart = { x: 0, y: 0 };
 let activeDragMouseStart = { x: 0, y: 0 };
 let isDraggingNode = false;
+let canvasNodeDragged = false;
 const nodeSaveDebounceTimers = {};
 let canvasPendingCoords = null;
 let lastRenderedSpatialItems = [];
@@ -3662,6 +3663,10 @@ function renderSpatialCanvas(items) {
       if (e.target.classList.contains('card-todo-checkbox') || e.target.closest('.card-pin-btn') || isLinking) {
         return;
       }
+      if (canvasNodeDragged) {
+        canvasNodeDragged = false;
+        return;
+      }
       showDetailModal(item);
     });
 
@@ -3796,6 +3801,7 @@ function initSpatialCanvasEvents() {
       } else {
         activeDragItem = item;
         isDraggingNode = true;
+        canvasNodeDragged = false;
         activeDragStart.x = item.canvas_x || 0;
         activeDragStart.y = item.canvas_y || 0;
         activeDragMouseStart.x = e.clientX;
@@ -3814,6 +3820,9 @@ function initSpatialCanvasEvents() {
   
   window.addEventListener('mousemove', (e) => {
     if (isDraggingNode && activeDragItem) {
+      if (Math.abs(e.clientX - activeDragMouseStart.x) > 5 || Math.abs(e.clientY - activeDragMouseStart.y) > 5) {
+        canvasNodeDragged = true;
+      }
       const dx = (e.clientX - activeDragMouseStart.x) / canvasZoom;
       const dy = (e.clientY - activeDragMouseStart.y) / canvasZoom;
       
