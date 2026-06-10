@@ -3271,6 +3271,7 @@ function drawConnections(items) {
   svg.innerHTML = '';
   const renderedLineKeys = new Set();
   
+  // 1. Draw Manual User-created Connections (Glowing solid purple curves)
   items.forEach(A => {
     if (!A.connections || A.connections.length === 0) return;
     
@@ -3337,6 +3338,66 @@ function drawConnections(items) {
       renderedLineKeys.add(lineKey);
     });
   });
+
+  // 2. Draw Autoformed Semantic Connections (Soft dotted cyan curves)
+  const ignoredTags = new Set(['inbox', 'link', 'web', 'to-read', 'todo', 'note', 'article', 'color', 'saved note']);
+  
+  for (let i = 0; i < items.length; i++) {
+    const A = items[i];
+    if (!A.ai_analysis || !A.ai_analysis.tags) continue;
+    const tagsA = A.ai_analysis.tags.map(t => t.toLowerCase()).filter(t => !ignoredTags.has(t));
+    if (tagsA.length === 0) continue;
+    
+    for (let j = i + 1; j < items.length; j++) {
+      const B = items[j];
+      if (!B.ai_analysis || !B.ai_analysis.tags) continue;
+      const tagsB = B.ai_analysis.tags.map(t => t.toLowerCase());
+      
+      const overlapTags = tagsA.filter(tag => tagsB.includes(tag));
+      if (overlapTags.length === 0) continue;
+      
+      const lineKey = A.id < B.id ? `${A.id}-${B.id}` : `${B.id}-${A.id}`;
+      if (renderedLineKeys.has(lineKey)) continue;
+      
+      const elA = document.querySelector(`.canvas-node-card[data-id="${A.id}"]`);
+      const elB = document.querySelector(`.canvas-node-card[data-id="${B.id}"]`);
+      if (!elA || !elB) continue;
+      
+      const wA = elA.offsetWidth || 280;
+      const hA = elA.offsetHeight || 150;
+      const x1 = (A.canvas_x || 0) + wA / 2;
+      const y1 = (A.canvas_y || 0) + hA / 2;
+      
+      const wB = elB.offsetWidth || 280;
+      const hB = elB.offsetHeight || 150;
+      const x2 = (B.canvas_x || 0) + wB / 2;
+      const y2 = (B.canvas_y || 0) + hB / 2;
+      
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const cx1 = x1 + dx * 0.4;
+      const cy1 = y1;
+      const cx2 = x2 - dx * 0.4;
+      const cy2 = y2;
+      
+      const pathData = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+      
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', pathData);
+      path.setAttribute('class', 'canvas-connection-line--auto');
+      path.setAttribute('title', `Connected via shared tag(s): ${overlapTags.join(', ')}`);
+      path.dataset.sourceId = A.id;
+      path.dataset.targetId = B.id;
+      
+      path.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        showToast(`This connection is auto-formed by the shared tag: #${overlapTags[0]}. To remove it, edit the tags on either note.`);
+      });
+      
+      svg.appendChild(path);
+      renderedLineKeys.add(lineKey);
+    }
+  }
 }
 
 function updateMinimap(items) {
