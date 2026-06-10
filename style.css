@@ -2064,7 +2064,7 @@ label {
 .canvas-minimap {
   position: absolute;
   bottom: 20px;
-  right: 20px;
+  left: 20px;
   width: 160px;
   height: 120px;
   background: var(--bg-glass);

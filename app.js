@@ -446,7 +446,12 @@ function setupEventListeners() {
     });
   }
 
-  document.getElementById('btn-quick-add').addEventListener('click', () => openModal('add-modal'));
+  document.getElementById('btn-quick-add').addEventListener('click', () => {
+    if (currentViewMode === 'spatial') {
+      canvasPendingCoords = getCanvasCenterCoords();
+    }
+    openModal('add-modal');
+  });
   document.getElementById('btn-cancel-add').addEventListener('click', () => closeModal('add-modal'));
   document.getElementById('btn-close-add-modal').addEventListener('click', () => closeModal('add-modal'));
   document.getElementById('add-modal-backdrop').addEventListener('click', () => closeModal('add-modal'));
@@ -3522,6 +3527,17 @@ function updateMinimap(items) {
   viewportBox.style.height = `${Math.max(4, viewMapBottom - viewMapTop)}px`;
 }
 
+function getCanvasCenterCoords() {
+  const viewport = document.getElementById('spatial-canvas-viewport');
+  if (!viewport) return { x: 0, y: 0 };
+  const rect = viewport.getBoundingClientRect();
+  const mouseX = rect.width / 2;
+  const mouseY = rect.height / 2;
+  const canvasX = Math.round((mouseX - canvasPanX) / canvasZoom);
+  const canvasY = Math.round((mouseY - canvasPanY) / canvasZoom);
+  return { x: canvasX, y: canvasY };
+}
+
 function getNodeSize(item, items) {
   if (canvasViewMode !== 'graph') return { w: 280, h: 150 };
   let degree = (item.connections || []).length;
@@ -3835,20 +3851,6 @@ function initSpatialCanvasEvents() {
     isPanning = false;
   });
   
-  viewport.addEventListener('dblclick', (e) => {
-    if (e.target === viewport || e.target.id === 'spatial-canvas') {
-      const rect = viewport.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-      
-      const canvasX = Math.round((mouseX - canvasPanX) / canvasZoom);
-      const canvasY = Math.round((mouseY - canvasPanY) / canvasZoom);
-      
-      canvasPendingCoords = { x: canvasX, y: canvasY };
-      openModal('add-modal');
-    }
-  });
-  
   if (btnZoomIn) btnZoomIn.addEventListener('click', () => zoomAtCenter(1.25));
   if (btnZoomOut) btnZoomOut.addEventListener('click', () => zoomAtCenter(1 / 1.25));
   if (btnZoomFit) btnZoomFit.addEventListener('click', zoomToFit);
@@ -3856,9 +3858,6 @@ function initSpatialCanvasEvents() {
   
   const btnCluster = document.getElementById('btn-canvas-cluster');
   if (btnCluster) btnCluster.addEventListener('click', () => clusterByTag('circular'));
-  
-  const btnClusterGrid = document.getElementById('btn-canvas-cluster-grid');
-  if (btnClusterGrid) btnClusterGrid.addEventListener('click', () => clusterByTag('grid'));
 
   const btnViewMode = document.getElementById('btn-canvas-view-mode');
   if (btnViewMode) {
@@ -3888,7 +3887,7 @@ function updateCanvasViewModeButton() {
   }
 }
 
-function clusterByTag(layoutType = 'circular') {
+function clusterByTag() {
   const items = lastRenderedSpatialItems || driveFiles || [];
   const validItems = items.filter(item => !item.isPlaceholder);
   if (validItems.length === 0) {
@@ -3923,137 +3922,68 @@ function clusterByTag(layoutType = 'circular') {
   
   const container = document.getElementById('canvas-nodes-container');
   
-  if (layoutType === 'grid') {
-    // 2. Grid Layout of Clusters (2 columns of clusters)
-    const cols = 2;
-    tags.forEach((tag, i) => {
-      const clusterCol = i % cols;
-      const clusterRow = Math.floor(i / cols);
+  // 2. Circular Constellation Layout
+  const clusterRadius = Math.max(320, N * 90);
+  
+  tags.forEach((tag, i) => {
+    const angle = (2 * Math.PI * i) / N;
+    const centerX = Math.round(clusterRadius * Math.cos(angle));
+    const centerY = Math.round(clusterRadius * Math.sin(angle));
+    
+    // Place items of this cluster in a circle/orbit around its center
+    const groupItems = tagGroups[tag];
+    const M = groupItems.length;
+    const itemRadius = M > 1 ? Math.max(100, M * 30) : 0;
+    
+    groupItems.forEach((item, j) => {
+      const itemAngle = M > 1 ? (2 * Math.PI * j) / M : 0;
+      item.canvas_x = Math.round(centerX + itemRadius * Math.cos(itemAngle));
+      item.canvas_y = Math.round(centerY + itemRadius * Math.sin(itemAngle));
       
-      const centerX = clusterCol * 750 - (Math.min(N, cols) - 1) * 375;
-      const centerY = clusterRow * 600 - (Math.ceil(N / cols) - 1) * 300;
-      
-      const groupItems = tagGroups[tag];
-      const M = groupItems.length;
-      
-      // Sub-grid layout for cards in this cluster (2 columns of cards)
-      const cardCols = 2;
-      const subGridW = (Math.min(M, cardCols) - 1) * 310;
-      const subGridH = (Math.ceil(M / cardCols) - 1) * 210;
-      
-      groupItems.forEach((item, j) => {
-        const itemCol = j % cardCols;
-        const itemRow = Math.floor(j / cardCols);
-        
-        item.canvas_x = Math.round(centerX + itemCol * 310 - subGridW / 2);
-        item.canvas_y = Math.round(centerY + itemRow * 210 - subGridH / 2);
-        
-        debounceSaveItem(item);
-      });
+      debounceSaveItem(item);
     });
+  });
+  
+  // Re-render nodes
+  renderSpatialCanvas(items);
+  
+  // Redraw the cluster labels
+  document.querySelectorAll('.canvas-cluster-label').forEach(el => el.remove());
+  tags.forEach((tag, i) => {
+    const angle = (2 * Math.PI * i) / N;
+    const centerX = Math.round(clusterRadius * Math.cos(angle));
+    const centerY = Math.round(clusterRadius * Math.sin(angle));
     
-    // Re-render nodes
-    renderSpatialCanvas(items);
+    const groupItems = tagGroups[tag];
+    const M = groupItems.length;
+    const itemRadius = M > 1 ? Math.max(100, M * 30) : 0;
     
-    // Draw grid cluster labels centered above the cluster
-    document.querySelectorAll('.canvas-cluster-label').forEach(el => el.remove());
-    tags.forEach((tag, i) => {
-      const clusterCol = i % cols;
-      const clusterRow = Math.floor(i / cols);
-      const centerX = clusterCol * 750 - (Math.min(N, cols) - 1) * 375;
-      const centerY = clusterRow * 600 - (Math.ceil(N / cols) - 1) * 300;
-      
-      const groupItems = tagGroups[tag];
-      const M = groupItems.length;
-      const cardCols = 2;
-      const subGridH = (Math.ceil(M / cardCols) - 1) * 210;
-      
-      if (container) {
-        const label = document.createElement('div');
-        label.className = 'canvas-cluster-label';
-        label.style.position = 'absolute';
-        label.style.left = `${centerX}px`;
-        label.style.top = `${centerY - subGridH / 2 - 110}px`;
-        label.style.transform = 'translate(-50%, -50%)';
-        label.style.fontSize = '1.25rem';
-        label.style.fontWeight = '700';
-        label.style.color = 'var(--accent-purple)';
-        label.style.background = 'rgba(18, 16, 22, 0.82)';
-        label.style.padding = '6px 18px';
-        label.style.borderRadius = '24px';
-        label.style.border = '1px solid var(--border-glass)';
-        label.style.pointerEvents = 'none';
-        label.style.whiteSpace = 'nowrap';
-        label.style.zIndex = '5';
-        label.style.boxShadow = '0 0 20px rgba(168, 85, 247, 0.2)';
-        label.textContent = tag === 'Untagged' ? 'Untagged' : `#${tag}`;
-        container.appendChild(label);
-      }
-    });
-  } else {
-    // 2. Circular Constellation Layout
-    const clusterRadius = Math.max(320, N * 90);
-    
-    tags.forEach((tag, i) => {
-      const angle = (2 * Math.PI * i) / N;
-      const centerX = Math.round(clusterRadius * Math.cos(angle));
-      const centerY = Math.round(clusterRadius * Math.sin(angle));
-      
-      // Place items of this cluster in a circle/orbit around its center
-      const groupItems = tagGroups[tag];
-      const M = groupItems.length;
-      const itemRadius = M > 1 ? Math.max(100, M * 30) : 0;
-      
-      groupItems.forEach((item, j) => {
-        const itemAngle = M > 1 ? (2 * Math.PI * j) / M : 0;
-        item.canvas_x = Math.round(centerX + itemRadius * Math.cos(itemAngle));
-        item.canvas_y = Math.round(centerY + itemRadius * Math.sin(itemAngle));
-        
-        debounceSaveItem(item);
-      });
-    });
-    
-    // Re-render nodes
-    renderSpatialCanvas(items);
-    
-    // Redraw the cluster labels
-    document.querySelectorAll('.canvas-cluster-label').forEach(el => el.remove());
-    tags.forEach((tag, i) => {
-      const angle = (2 * Math.PI * i) / N;
-      const centerX = Math.round(clusterRadius * Math.cos(angle));
-      const centerY = Math.round(clusterRadius * Math.sin(angle));
-      
-      const groupItems = tagGroups[tag];
-      const M = groupItems.length;
-      const itemRadius = M > 1 ? Math.max(100, M * 30) : 0;
-      
-      if (container) {
-        const label = document.createElement('div');
-        label.className = 'canvas-cluster-label';
-        label.style.position = 'absolute';
-        label.style.left = `${centerX}px`;
-        label.style.top = `${centerY - itemRadius - 80}px`;
-        label.style.transform = 'translate(-50%, -50%)';
-        label.style.fontSize = '1.25rem';
-        label.style.fontWeight = '700';
-        label.style.color = 'var(--accent-purple)';
-        label.style.background = 'rgba(18, 16, 22, 0.82)';
-        label.style.padding = '6px 18px';
-        label.style.borderRadius = '24px';
-        label.style.border = '1px solid var(--border-glass)';
-        label.style.pointerEvents = 'none';
-        label.style.whiteSpace = 'nowrap';
-        label.style.zIndex = '5';
-        label.style.boxShadow = '0 0 20px rgba(168, 85, 247, 0.2)';
-        label.textContent = tag === 'Untagged' ? 'Untagged' : `#${tag}`;
-        container.appendChild(label);
-      }
-    });
-  }
+    if (container) {
+      const label = document.createElement('div');
+      label.className = 'canvas-cluster-label';
+      label.style.position = 'absolute';
+      label.style.left = `${centerX}px`;
+      label.style.top = `${centerY - itemRadius - 80}px`;
+      label.style.transform = 'translate(-50%, -50%)';
+      label.style.fontSize = '1.25rem';
+      label.style.fontWeight = '700';
+      label.style.color = 'var(--accent-purple)';
+      label.style.background = 'rgba(18, 16, 22, 0.82)';
+      label.style.padding = '6px 18px';
+      label.style.borderRadius = '24px';
+      label.style.border = '1px solid var(--border-glass)';
+      label.style.pointerEvents = 'none';
+      label.style.whiteSpace = 'nowrap';
+      label.style.zIndex = '5';
+      label.style.boxShadow = '0 0 20px rgba(168, 85, 247, 0.2)';
+      label.textContent = tag === 'Untagged' ? 'Untagged' : `#${tag}`;
+      container.appendChild(label);
+    }
+  });
 
   // Auto zoom to fit clusters
   zoomToFit();
-  showToast(`Clustered by tag (${layoutType === 'grid' ? 'Grid' : 'Constellation'})!`);
+  showToast('Clustered by tag (Constellation)!');
 }
 
 
