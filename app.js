@@ -362,8 +362,12 @@ function setupEventListeners() {
     openModal('settings-modal');
     closeMobileSidebar();
   };
-  document.getElementById('btn-settings').addEventListener('click', openSettings);
-  document.getElementById('btn-mobile-settings').addEventListener('click', openSettings);
+  const btnSettings = document.getElementById('btn-settings');
+  if (btnSettings) btnSettings.addEventListener('click', openSettings);
+  
+  const btnMobileSettings = document.getElementById('btn-mobile-settings');
+  if (btnMobileSettings) btnMobileSettings.addEventListener('click', openSettings);
+  
   const btnLandingSettings = document.getElementById('btn-landing-settings');
   if (btnLandingSettings) {
     btnLandingSettings.addEventListener('click', openSettings);
@@ -373,22 +377,37 @@ function setupEventListeners() {
     revertLiveSettings();
     closeModal('settings-modal');
   };
-  document.getElementById('btn-close-settings').addEventListener('click', cancelSettings);
-  document.getElementById('btn-close-settings-modal').addEventListener('click', cancelSettings);
-  document.getElementById('settings-modal-backdrop').addEventListener('click', cancelSettings);
+  const btnCloseSettings = document.getElementById('btn-close-settings');
+  if (btnCloseSettings) btnCloseSettings.addEventListener('click', cancelSettings);
+  
+  const btnCloseSettingsModal = document.getElementById('btn-close-settings-modal');
+  if (btnCloseSettingsModal) btnCloseSettingsModal.addEventListener('click', cancelSettings);
+  
+  const settingsModalBackdrop = document.getElementById('settings-modal-backdrop');
+  if (settingsModalBackdrop) settingsModalBackdrop.addEventListener('click', cancelSettings);
 
   // Live appearance settings changes
-  document.getElementById('setting-appearance-mode').addEventListener('change', (e) => {
-    document.documentElement.setAttribute('data-mode', e.target.value);
-  });
-  document.getElementById('setting-appearance-theme').addEventListener('change', (e) => {
-    document.documentElement.setAttribute('data-theme', e.target.value);
-  });
-  document.getElementById('setting-card-opacity').addEventListener('input', (e) => {
-    const opacityVal = (e.target.value / 100).toFixed(2);
-    document.getElementById('setting-opacity-val').textContent = e.target.value + '%';
-    document.documentElement.style.setProperty('--card-opacity', opacityVal);
-  });
+  const settingAppearanceMode = document.getElementById('setting-appearance-mode');
+  if (settingAppearanceMode) {
+    settingAppearanceMode.addEventListener('change', (e) => {
+      document.documentElement.setAttribute('data-mode', e.target.value);
+    });
+  }
+  const settingAppearanceTheme = document.getElementById('setting-appearance-theme');
+  if (settingAppearanceTheme) {
+    settingAppearanceTheme.addEventListener('change', (e) => {
+      document.documentElement.setAttribute('data-theme', e.target.value);
+    });
+  }
+  const settingCardOpacity = document.getElementById('setting-card-opacity');
+  if (settingCardOpacity) {
+    settingCardOpacity.addEventListener('input', (e) => {
+      const opacityVal = (e.target.value / 100).toFixed(2);
+      const settingOpacityVal = document.getElementById('setting-opacity-val');
+      if (settingOpacityVal) settingOpacityVal.textContent = e.target.value + '%';
+      document.documentElement.style.setProperty('--card-opacity', opacityVal);
+    });
+  }
 
   document.getElementById('btn-quick-add').addEventListener('click', () => openModal('add-modal'));
   document.getElementById('btn-cancel-add').addEventListener('click', () => closeModal('add-modal'));
@@ -2752,8 +2771,11 @@ function initSettingsForm() {
   if (geminiInput) geminiInput.value = geminiKey;
   if (modeInput) modeInput.value = mode;
   if (themeInput) themeInput.value = theme;
-  if (opacityInput) opacityInput.value = Math.round(parseFloat(opacity) * 100);
-  if (opacityVal) opacityVal.textContent = Math.round(parseFloat(opacity) * 100) + '%';
+
+  const parsedOpacity = parseFloat(opacity);
+  const opacityPercent = isNaN(parsedOpacity) ? 50 : Math.round(parsedOpacity * 100);
+  if (opacityInput) opacityInput.value = opacityPercent;
+  if (opacityVal) opacityVal.textContent = opacityPercent + '%';
 }
 
 function revertLiveSettings() {
