@@ -1997,6 +1997,7 @@ function renderGrid() {
   } else {
     const spatialView = document.getElementById('spatial-canvas-view');
     if (spatialView) spatialView.setAttribute('hidden', 'true');
+    if (othersSection) othersSection.removeAttribute('hidden');
   }
 
   if (pinnedGrid) pinnedGrid.innerHTML = '';
