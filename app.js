@@ -3523,12 +3523,18 @@ function updateMinimap(items) {
 function renderSpatialCanvas(items) {
   lastRenderedSpatialItems = items;
   
-  items.forEach((item, index) => {
+  // Clear any existing cluster labels to prevent duplicates or ghosts
+  document.querySelectorAll('.canvas-cluster-label').forEach(el => el.remove());
+  
+  let unplacedCount = 0;
+  items.forEach((item) => {
     if (item.canvas_x === undefined || item.canvas_y === undefined) {
-      const angle = 0.5 * index;
-      const radius = 80 * Math.sqrt(index) + 120;
-      item.canvas_x = Math.round(radius * Math.cos(angle));
-      item.canvas_y = Math.round(radius * Math.sin(angle));
+      const cols = 4;
+      const col = unplacedCount % cols;
+      const row = Math.floor(unplacedCount / cols);
+      item.canvas_x = col * 380 - 570;
+      item.canvas_y = row * 280 - 280;
+      unplacedCount++;
       debounceSaveItem(item);
     }
   });
@@ -3810,6 +3816,133 @@ function initSpatialCanvasEvents() {
   if (btnZoomOut) btnZoomOut.addEventListener('click', () => zoomAtCenter(1 / 1.25));
   if (btnZoomFit) btnZoomFit.addEventListener('click', zoomToFit);
   if (btnLinkMode) btnLinkMode.addEventListener('click', toggleLinkMode);
+  
+  const btnCluster = document.getElementById('btn-canvas-cluster');
+  if (btnCluster) btnCluster.addEventListener('click', clusterByTag);
+}
+
+function clusterByTag() {
+  const items = lastRenderedSpatialItems || driveFiles || [];
+  const validItems = items.filter(item => !item.isPlaceholder);
+  if (validItems.length === 0) {
+    showToast('No cards to cluster!');
+    return;
+  }
+  
+  // 1. Group items by tag
+  const tagGroups = {};
+  const ignoredTags = new Set(['inbox', 'link', 'web', 'to-read', 'todo', 'note', 'article', 'color', 'saved note']);
+  
+  validItems.forEach(item => {
+    let bestTag = 'Untagged';
+    if (item.ai_analysis && item.ai_analysis.tags && item.ai_analysis.tags.length > 0) {
+      const validTags = item.ai_analysis.tags
+        .map(t => t.toLowerCase())
+        .filter(t => !ignoredTags.has(t));
+      if (validTags.length > 0) {
+        bestTag = validTags[0]; // Use the first valid tag
+      }
+    }
+    
+    if (!tagGroups[bestTag]) {
+      tagGroups[bestTag] = [];
+    }
+    tagGroups[bestTag].push(item);
+  });
+  
+  const tags = Object.keys(tagGroups);
+  const N = tags.length;
+  if (N === 0) return;
+  
+  // 2. Space cluster centers in a circle around (0,0)
+  const clusterRadius = Math.max(500, N * 150);
+  
+  const container = document.getElementById('canvas-nodes-container');
+  
+  tags.forEach((tag, i) => {
+    const angle = (2 * Math.PI * i) / N;
+    const centerX = Math.round(clusterRadius * Math.cos(angle));
+    const centerY = Math.round(clusterRadius * Math.sin(angle));
+    
+    // Draw tag label in container
+    if (container) {
+      const label = document.createElement('div');
+      label.className = 'canvas-cluster-label';
+      label.style.position = 'absolute';
+      label.style.left = `${centerX}px`;
+      label.style.top = `${centerY - 180}px`;
+      label.style.transform = 'translate(-50%, -50%)';
+      label.style.fontSize = '1.25rem';
+      label.style.fontWeight = '700';
+      label.style.color = 'var(--accent-purple)';
+      label.style.background = 'rgba(18, 16, 22, 0.82)';
+      label.style.padding = '6px 18px';
+      label.style.borderRadius = '24px';
+      label.style.border = '1px solid var(--border-glass)';
+      label.style.pointerEvents = 'none';
+      label.style.whiteSpace = 'nowrap';
+      label.style.zIndex = '5';
+      label.style.boxShadow = '0 0 20px rgba(168, 85, 247, 0.2)';
+      label.textContent = tag === 'Untagged' ? 'Untagged' : `#${tag}`;
+      container.appendChild(label);
+    }
+    
+    // Place items of this cluster in a circle/orbit around its center
+    const groupItems = tagGroups[tag];
+    const M = groupItems.length;
+    groupItems.forEach((item, j) => {
+      const itemAngle = M > 1 ? (2 * Math.PI * j) / M : 0;
+      const itemRadius = M > 1 ? 160 : 0;
+      
+      item.canvas_x = Math.round(centerX + itemRadius * Math.cos(itemAngle));
+      item.canvas_y = Math.round(centerY + itemRadius * Math.sin(itemAngle));
+      
+      debounceSaveItem(item);
+    });
+  });
+  
+  // Re-render nodes (this will clear previous and draw new card placements)
+  renderSpatialCanvas(items);
+  
+  // Redraw the cluster labels as the above renderSpatialCanvas clears them on re-render
+  // We can just append them right after drawing nodes!
+  // Wait, that means renderSpatialCanvas is called, so we should just run the label creation after it!
+  // Let's copy label creation to run *after* renderSpatialCanvas.
+  
+  // Clear any existing cluster labels
+  document.querySelectorAll('.canvas-cluster-label').forEach(el => el.remove());
+  
+  tags.forEach((tag, i) => {
+    const angle = (2 * Math.PI * i) / N;
+    const centerX = Math.round(clusterRadius * Math.cos(angle));
+    const centerY = Math.round(clusterRadius * Math.sin(angle));
+    
+    if (container) {
+      const label = document.createElement('div');
+      label.className = 'canvas-cluster-label';
+      label.style.position = 'absolute';
+      label.style.left = `${centerX}px`;
+      label.style.top = `${centerY - 180}px`;
+      label.style.transform = 'translate(-50%, -50%)';
+      label.style.fontSize = '1.25rem';
+      label.style.fontWeight = '700';
+      label.style.color = 'var(--accent-purple)';
+      label.style.background = 'rgba(18, 16, 22, 0.82)';
+      label.style.padding = '6px 18px';
+      label.style.borderRadius = '24px';
+      label.style.border = '1px solid var(--border-glass)';
+      label.style.pointerEvents = 'none';
+      label.style.whiteSpace = 'nowrap';
+      label.style.zIndex = '5';
+      label.style.boxShadow = '0 0 20px rgba(168, 85, 247, 0.2)';
+      label.textContent = tag === 'Untagged' ? 'Untagged' : `#${tag}`;
+      container.appendChild(label);
+    }
+  });
+
+  // Auto zoom to fit clusters
+  zoomToFit();
+  showToast('Clustered by tag!');
 }
 
 
