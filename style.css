@@ -1925,6 +1925,7 @@ label {
   height: 100%;
   overflow: hidden;
   cursor: grab;
+  touch-action: none;
   /* Subtle grid pattern background */
   background-image: 
     linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
@@ -1990,7 +1991,7 @@ label {
 /* Connection Lines styling */
 .canvas-connection-line {
   fill: none;
-  stroke: rgba(168, 85, 247, 0.25);
+  stroke: rgba(168, 85, 247, 0.45);
   stroke-width: 3px;
   pointer-events: auto;
   cursor: pointer;
@@ -2137,7 +2138,7 @@ label {
 /* Autoformed semantic connection lines */
 .canvas-connection-line--auto {
   fill: none;
-  stroke: rgba(6, 182, 212, 0.25); /* Soft cyan/teal */
+  stroke: rgba(6, 182, 212, 0.45); /* Soft cyan/teal */
   stroke-width: 2px;
   stroke-dasharray: 4 4;
   pointer-events: auto;
@@ -2236,7 +2237,7 @@ label {
 /* Straight line connections in Graph mode */
 .canvas-connection-line--graph {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.16);
+  stroke: rgba(255, 255, 255, 0.35);
   stroke-width: 1.5px;
   pointer-events: auto;
   cursor: pointer;
@@ -2251,7 +2252,7 @@ label {
 
 .canvas-connection-line--graph-auto {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.08);
+  stroke: rgba(6, 182, 212, 0.35); /* Match cyan/teal of Card View */
   stroke-width: 1.2px;
   stroke-dasharray: 4 4;
   pointer-events: auto;

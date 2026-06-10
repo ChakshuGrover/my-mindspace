@@ -659,12 +659,20 @@ function showConfirm(title, message, confirmBtnText = 'Confirm', cancelBtnText =
   return new Promise((resolve) => {
     confirmResolver = resolve;
     document.getElementById('confirm-title').textContent = title;
-    document.getElementById('confirm-message').textContent = message;
+    document.getElementById('confirm-message').innerHTML = message;
     
     const okBtn = document.getElementById('confirm-ok-btn');
     const cancelBtn = document.getElementById('confirm-cancel-btn');
     if (okBtn) okBtn.textContent = confirmBtnText;
-    if (cancelBtn) cancelBtn.textContent = cancelBtnText;
+    
+    if (cancelBtn) {
+      if (cancelBtnText) {
+        cancelBtn.style.display = '';
+        cancelBtn.textContent = cancelBtnText;
+      } else {
+        cancelBtn.style.display = 'none';
+      }
+    }
     
     openModal('confirm-modal');
   });
@@ -3334,6 +3342,34 @@ function drawConnections(items) {
     });
   }
   
+  // Helper to create non-scaling thick click overlays
+  function createInteractionPath(pathData, sourceId, targetId, clickHandler, dblclickHandler = null) {
+    const iPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    iPath.setAttribute('d', pathData);
+    iPath.setAttribute('fill', 'none');
+    iPath.setAttribute('stroke', 'transparent');
+    iPath.setAttribute('stroke-width', '16px'); // Nice fat target!
+    iPath.setAttribute('vector-effect', 'non-scaling-stroke'); // Click target size constant
+    iPath.setAttribute('pointer-events', 'stroke');
+    iPath.style.cursor = 'pointer';
+    iPath.dataset.sourceId = sourceId;
+    iPath.dataset.targetId = targetId;
+
+    if (clickHandler) {
+      iPath.addEventListener('click', (e) => {
+        e.stopPropagation();
+        clickHandler(e);
+      });
+    }
+    if (dblclickHandler) {
+      iPath.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        dblclickHandler(e);
+      });
+    }
+    return iPath;
+  }
+
   // 1. Draw Manual User-created Connections (Glowing solid purple curves/lines)
   items.forEach(A => {
     if (!A.connections || A.connections.length === 0) return;
@@ -3364,14 +3400,16 @@ function drawConnections(items) {
         ? `M ${x1} ${y1} L ${x2} ${y2}`
         : `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
       
+      // Visual path
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', pathData);
       path.setAttribute('class', canvasViewMode === 'graph' ? 'canvas-connection-line--graph' : 'canvas-connection-line');
+      path.setAttribute('vector-effect', 'non-scaling-stroke'); // Visual stroke size constant
+      path.setAttribute('pointer-events', 'none'); // Let interaction overlay handle mouse events
       path.dataset.sourceId = A.id;
       path.dataset.targetId = B.id;
       
-      path.addEventListener('dblclick', async (e) => {
-        e.stopPropagation();
+      const onDblclick = async (e) => {
         const confirmed = await showConfirm(
           'Delete Connection',
           'Are you sure you want to disconnect these notes?',
@@ -3389,9 +3427,13 @@ function drawConnections(items) {
           
           drawConnections(items);
         }
-      });
+      };
+
+      // Create transparent interaction overlay
+      const iPath = createInteractionPath(pathData, A.id, B.id, null, onDblclick);
       
       svg.appendChild(path);
+      svg.appendChild(iPath);
       renderedLineKeys.add(lineKey);
     });
   });
@@ -3435,19 +3477,36 @@ function drawConnections(items) {
         ? `M ${x1} ${y1} L ${x2} ${y2}`
         : `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
       
+      // Visual path
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', pathData);
       path.setAttribute('class', canvasViewMode === 'graph' ? 'canvas-connection-line--graph-auto' : 'canvas-connection-line--auto');
-      path.setAttribute('title', `Connected via shared tag(s): ${overlapTags.join(', ')}`);
+      path.setAttribute('vector-effect', 'non-scaling-stroke'); // Visual stroke size constant
+      path.setAttribute('pointer-events', 'none');
       path.dataset.sourceId = A.id;
       path.dataset.targetId = B.id;
       
-      path.addEventListener('dblclick', (e) => {
-        e.stopPropagation();
-        showToast(`This connection is auto-formed by the shared tag: #${overlapTags[0]}. To remove it, edit the tags on either note.`);
-      });
+      // Single click enquiry handler
+      const onClick = () => {
+        const tagBadges = overlapTags.map(tag => 
+          `<span style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; padding: 4px 10px; border-radius: 12px; font-size: 0.85rem; font-weight: 600; border: 1px solid rgba(6, 182, 212, 0.3); margin-inline-end: 6px; display: inline-block;">#${tag}</span>`
+        ).join(' ');
+
+        showConfirm(
+          'Auto-Connection Details',
+          `This connection between <strong>"${A.title}"</strong> and <strong>"${B.title}"</strong> was automatically formed because they share the following tag(s):<br><br>` + 
+          tagBadges + 
+          `<br><br><span style="font-size: 0.85rem; color: var(--text-muted); font-style: italic;">To separate them, edit the tags on either card to remove the overlap.</span>`,
+          'OK',
+          null // Hide cancel button
+        );
+      };
+
+      // Create transparent interaction overlay
+      const iPath = createInteractionPath(pathData, A.id, B.id, onClick, null);
       
       svg.appendChild(path);
+      svg.appendChild(iPath);
       renderedLineKeys.add(lineKey);
     }
   }
@@ -3756,7 +3815,7 @@ function initSpatialCanvasEvents() {
     updateCanvasTransform();
   }, { passive: false });
   
-  viewport.addEventListener('mousedown', (e) => {
+  viewport.addEventListener('pointerdown', (e) => {
     const cardEl = e.target.closest('.canvas-node-card');
     
     if (cardEl) {
@@ -3824,7 +3883,7 @@ function initSpatialCanvasEvents() {
     }
   });
   
-  window.addEventListener('mousemove', (e) => {
+  window.addEventListener('pointermove', (e) => {
     if (isDraggingNode && activeDragItem) {
       if (Math.abs(e.clientX - activeDragMouseStart.x) > 5 || Math.abs(e.clientY - activeDragMouseStart.y) > 5) {
         canvasNodeDragged = true;
@@ -3854,7 +3913,7 @@ function initSpatialCanvasEvents() {
     }
   });
   
-  window.addEventListener('mouseup', () => {
+  window.addEventListener('pointerup', () => {
     if (isDraggingNode && activeDragItem) {
       const cardEl = document.querySelector(`.canvas-node-card[data-id="${activeDragItem.id}"]`);
       if (cardEl) {
