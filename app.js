@@ -138,9 +138,9 @@ function initApp() {
   }
 
   // Load configuration and apply appearance
-  const savedMode = safeStorage.getItem('mymind_appearance_mode') || 'dark';
-  const savedTheme = safeStorage.getItem('mymind_appearance_theme') || 'default';
-  const savedOpacity = safeStorage.getItem('mymind_card_opacity') || '0.50';
+  const savedMode = sanitizeValue(safeStorage.getItem('mymind_appearance_mode'), 'dark');
+  const savedTheme = sanitizeValue(safeStorage.getItem('mymind_appearance_theme'), 'default');
+  const savedOpacity = sanitizeValue(safeStorage.getItem('mymind_card_opacity'), '0.50');
   applyThemeAndOpacity(savedMode, savedTheme, savedOpacity);
   initSettingsForm();
 
@@ -2766,20 +2766,26 @@ async function saveDetailEdits() {
 }
 
 // --- Configuration Management ---
+function sanitizeValue(val, fallback) {
+  if (val === undefined || val === null) return fallback;
+  const str = String(val).trim();
+  if (str === '' || str === 'undefined' || str === 'null') return fallback;
+  return str;
+}
+
 function applyThemeAndOpacity(mode, theme, opacity) {
   const root = document.documentElement;
-  root.setAttribute('data-mode', mode || 'dark');
-  root.setAttribute('data-theme', theme || 'default');
-  if (opacity !== undefined && opacity !== null) {
-    root.style.setProperty('--card-opacity', opacity);
-  }
+  root.setAttribute('data-mode', sanitizeValue(mode, 'dark'));
+  root.setAttribute('data-theme', sanitizeValue(theme, 'default'));
+  const activeOpacity = sanitizeValue(opacity, '0.50');
+  root.style.setProperty('--card-opacity', activeOpacity);
 }
 
 function initSettingsForm() {
   const geminiKey = safeStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '';
-  const mode = safeStorage.getItem('mymind_appearance_mode') || 'dark';
-  const theme = safeStorage.getItem('mymind_appearance_theme') || 'default';
-  const opacity = safeStorage.getItem('mymind_card_opacity') || '0.50';
+  const mode = sanitizeValue(safeStorage.getItem('mymind_appearance_mode'), 'dark');
+  const theme = sanitizeValue(safeStorage.getItem('mymind_appearance_theme'), 'default');
+  const opacity = sanitizeValue(safeStorage.getItem('mymind_card_opacity'), '0.50');
 
   const geminiInput = document.getElementById('setting-gemini-key');
   const modeInput = document.getElementById('setting-appearance-mode');
@@ -2798,9 +2804,9 @@ function initSettingsForm() {
 }
 
 function revertLiveSettings() {
-  const savedMode = safeStorage.getItem('mymind_appearance_mode') || 'dark';
-  const savedTheme = safeStorage.getItem('mymind_appearance_theme') || 'default';
-  const savedOpacity = safeStorage.getItem('mymind_card_opacity') || '0.50';
+  const savedMode = sanitizeValue(safeStorage.getItem('mymind_appearance_mode'), 'dark');
+  const savedTheme = sanitizeValue(safeStorage.getItem('mymind_appearance_theme'), 'default');
+  const savedOpacity = sanitizeValue(safeStorage.getItem('mymind_card_opacity'), '0.50');
   applyThemeAndOpacity(savedMode, savedTheme, savedOpacity);
 }
 
@@ -2892,19 +2898,19 @@ async function loadSettingsFromDrive() {
       }
 
       if (remoteSettings.mode) {
-        safeStorage.setItem('mymind_appearance_mode', remoteSettings.mode);
+        safeStorage.setItem('mymind_appearance_mode', sanitizeValue(remoteSettings.mode, 'dark'));
       }
       if (remoteSettings.theme) {
-        safeStorage.setItem('mymind_appearance_theme', remoteSettings.theme);
+        safeStorage.setItem('mymind_appearance_theme', sanitizeValue(remoteSettings.theme, 'default'));
       }
       if (remoteSettings.cardOpacity) {
-        safeStorage.setItem('mymind_card_opacity', remoteSettings.cardOpacity);
+        safeStorage.setItem('mymind_card_opacity', sanitizeValue(remoteSettings.cardOpacity, '0.50'));
       }
 
       applyThemeAndOpacity(
-        remoteSettings.mode || 'dark',
-        remoteSettings.theme || 'default',
-        remoteSettings.cardOpacity || '0.50'
+        sanitizeValue(remoteSettings.mode, 'dark'),
+        sanitizeValue(remoteSettings.theme, 'default'),
+        sanitizeValue(remoteSettings.cardOpacity, '0.50')
       );
       
       setSyncStatus('synced', 'Synced');
@@ -2924,9 +2930,9 @@ async function syncSettingsToDrive(geminiKey, mode, theme, opacity) {
     const encryptionKey = googleUserId || safeStorage.getItem('mymind_google_user_id') || 'mymindspace_fallback';
     const encryptedGeminiKey = encryptKey(geminiKey, encryptionKey);
 
-    const activeMode = mode || safeStorage.getItem('mymind_appearance_mode') || 'dark';
-    const activeTheme = theme || safeStorage.getItem('mymind_appearance_theme') || 'default';
-    const activeOpacity = opacity || safeStorage.getItem('mymind_card_opacity') || '0.50';
+    const activeMode = sanitizeValue(mode || safeStorage.getItem('mymind_appearance_mode'), 'dark');
+    const activeTheme = sanitizeValue(theme || safeStorage.getItem('mymind_appearance_theme'), 'default');
+    const activeOpacity = sanitizeValue(opacity || safeStorage.getItem('mymind_card_opacity'), '0.50');
 
     const settingsPayload = {
       encryptedGeminiKey,
