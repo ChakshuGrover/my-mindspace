@@ -7,7 +7,9 @@
   /* Color Palette (Aesthetic Dark Theme) */
   --bg-primary: #0a090d;
   --bg-secondary: #121016;
-  --bg-glass: rgba(18, 16, 22, 0.5);
+  --bg-glass-rgb: 18, 16, 22;
+  --card-opacity: 0.50;
+  --bg-glass: rgba(var(--bg-glass-rgb), var(--card-opacity));
   --bg-glass-active: rgba(255, 255, 255, 0.05);
   
   --border-glass: rgba(255, 255, 255, 0.06);
@@ -22,6 +24,104 @@
   --accent-purple-glow: rgba(168, 85, 247, 0.25);
   --accent-pink: #ec4899;
   --accent-blue: #3b82f6;
+
+  /* --- Appearance Modes & Theme Presets --- */
+  
+  /* 1. LIGHT MODE (Base Overrides) */
+  [data-mode="light"] {
+    --bg-primary: #f4f3f6;
+    --bg-secondary: #ffffff;
+    --bg-glass-rgb: 255, 255, 255;
+    --bg-glass-active: rgba(0, 0, 0, 0.04);
+    
+    --border-glass: rgba(0, 0, 0, 0.08);
+    --border-glass-hover: rgba(0, 0, 0, 0.18);
+    --border-focus: #7c3aed;
+    
+    --text-primary: #121016;
+    --text-secondary: #4b5563;
+    --text-muted: #9ca3af;
+    
+    --accent-purple: #7c3aed;
+    --accent-purple-glow: rgba(124, 58, 237, 0.12);
+    --accent-pink: #db2777;
+    --accent-blue: #2563eb;
+  }
+  
+  /* 2. CYBERPUNK (Theme Preset) */
+  [data-theme="cyberpunk"] {
+    --accent-purple: #ff007f; /* Neon pink/magenta */
+    --accent-pink: #00f0ff; /* Neon cyan */
+    --accent-blue: #7000ff; /* Neon purple */
+    --border-focus: #00f0ff;
+    --accent-purple-glow: rgba(255, 0, 127, 0.25);
+  }
+  [data-mode="dark"][data-theme="cyberpunk"],
+  :root:not([data-mode="light"])[data-theme="cyberpunk"] {
+    --bg-primary: #050409;
+    --bg-secondary: #0e0a16;
+    --bg-glass-rgb: 14, 10, 22;
+    --text-primary: #f0f3fa;
+  }
+  [data-mode="light"][data-theme="cyberpunk"] {
+    --bg-primary: #f0f2f5;
+    --bg-secondary: #ffffff;
+    --bg-glass-rgb: 255, 255, 255;
+    --text-primary: #0c0a1a;
+    --border-glass: rgba(0, 240, 255, 0.12);
+    --border-glass-hover: rgba(255, 0, 127, 0.25);
+    --accent-purple-glow: rgba(255, 0, 127, 0.12);
+  }
+  
+  /* 3. SAKURA (Theme Preset) */
+  [data-theme="sakura"] {
+    --accent-purple: #ec4899; /* Cherry Blossom Pink */
+    --accent-pink: #f472b6; /* Soft Pink */
+    --accent-blue: #f43f5e; /* Rose Red */
+    --border-focus: #ec4899;
+    --accent-purple-glow: rgba(236, 72, 153, 0.25);
+  }
+  [data-mode="dark"][data-theme="sakura"],
+  :root:not([data-mode="light"])[data-theme="sakura"] {
+    --bg-primary: #1c0a10; /* Very deep wine */
+    --bg-secondary: #251218;
+    --bg-glass-rgb: 37, 18, 24;
+    --text-primary: #fff1f2;
+  }
+  [data-mode="light"][data-theme="sakura"] {
+    --bg-primary: #fff5f6; /* Soft cream/pink */
+    --bg-secondary: #ffffff;
+    --bg-glass-rgb: 255, 255, 255;
+    --text-primary: #2d0e15;
+    --border-glass: rgba(236, 72, 153, 0.08);
+    --border-glass-hover: rgba(236, 72, 153, 0.22);
+    --accent-purple-glow: rgba(236, 72, 153, 0.12);
+  }
+  
+  /* 4. SAGE (Theme Preset) */
+  [data-theme="sage"] {
+    --accent-purple: #10b981; /* Sage green / Emerald */
+    --accent-pink: #84cc16; /* Lime */
+    --accent-blue: #06b6d4; /* Teal */
+    --border-focus: #10b981;
+    --accent-purple-glow: rgba(16, 185, 129, 0.25);
+  }
+  [data-mode="dark"][data-theme="sage"],
+  :root:not([data-mode="light"])[data-theme="sage"] {
+    --bg-primary: #060e0b; /* Very deep forest black */
+    --bg-secondary: #0c1612;
+    --bg-glass-rgb: 12, 22, 18;
+    --text-primary: #f0fdf4;
+  }
+  [data-mode="light"][data-theme="sage"] {
+    --bg-primary: #f4f8f5; /* Soft light sage background */
+    --bg-secondary: #ffffff;
+    --bg-glass-rgb: 255, 255, 255;
+    --text-primary: #061e14;
+    --border-glass: rgba(16, 185, 129, 0.08);
+    --border-glass-hover: rgba(16, 185, 129, 0.22);
+    --accent-purple-glow: rgba(16, 185, 129, 0.12);
+  }
   
   /* Fonts */
   --font-sans: 'Outfit', 'Inter', sans-serif;
@@ -388,7 +488,7 @@ html {
 
 .nav-item:hover, .nav-item.active {
   background-color: var(--bg-glass-active);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .nav-item.active {
@@ -408,7 +508,7 @@ html {
 }
 
 .btn-action-small:hover {
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .folders-list {
@@ -431,7 +531,7 @@ html {
 
 .folder-nav-item:hover, .folder-nav-item.active {
   background-color: var(--bg-glass-active);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .btn-delete-folder {
@@ -1052,7 +1152,7 @@ html {
 }
 
 .btn-close:hover {
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .modal-body {
@@ -1107,7 +1207,7 @@ html {
   block-size: 160px;
   resize: none;
   background: transparent;
-  color: #fff;
+  color: var(--text-primary);
   font-size: 1.1rem;
   line-height: 1.5;
   border: none;
@@ -1138,9 +1238,13 @@ html {
   border: 1px solid var(--border-glass);
   padding: 12px 16px;
   border-radius: var(--radius-sm);
-  color: #fff;
+  color: var(--text-primary);
   font-size: 0.95rem;
   transition: var(--transition-fast);
+}
+.select-label select option {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 .form-label input:focus, .select-label select:focus {
@@ -1155,7 +1259,7 @@ html {
   font-size: 1rem;
   font-weight: 700;
   margin-block-end: 8px;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .settings-hint {
@@ -1227,7 +1331,7 @@ html {
 
 .btn--ghost:hover {
   background-color: var(--bg-glass-active);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .btn--danger {
@@ -1802,55 +1906,55 @@ label {
 
 /* --- Card Background Colors & Gradients --- */
 .mind-card.color-default {
-  background-color: var(--bg-glass);
+  background: rgba(var(--bg-glass-rgb), var(--card-opacity));
   border-color: var(--border-glass);
 }
 .mind-card.color-red {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.22) 0%, rgba(18, 16, 22, 0.8) 100%);
-  border-color: rgba(239, 68, 68, 0.4);
+  background: linear-gradient(135deg, rgba(239, 68, 68, calc(var(--card-opacity) * 0.44)) 0%, rgba(var(--bg-glass-rgb), var(--card-opacity)) 100%);
+  border-color: rgba(239, 68, 68, calc(var(--card-opacity) * 0.8));
 }
 .mind-card.color-red:hover {
-  border-color: rgba(239, 68, 68, 0.65);
+  border-color: rgba(239, 68, 68, calc(var(--card-opacity) * 0.8 + 0.25));
   box-shadow: 0 12px 30px rgba(239, 68, 68, 0.18);
 }
 .mind-card.color-yellow {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.22) 0%, rgba(18, 16, 22, 0.8) 100%);
-  border-color: rgba(245, 158, 11, 0.4);
+  background: linear-gradient(135deg, rgba(245, 158, 11, calc(var(--card-opacity) * 0.44)) 0%, rgba(var(--bg-glass-rgb), var(--card-opacity)) 100%);
+  border-color: rgba(245, 158, 11, calc(var(--card-opacity) * 0.8));
 }
 .mind-card.color-yellow:hover {
-  border-color: rgba(245, 158, 11, 0.65);
+  border-color: rgba(245, 158, 11, calc(var(--card-opacity) * 0.8 + 0.25));
   box-shadow: 0 12px 30px rgba(245, 158, 11, 0.18);
 }
 .mind-card.color-green {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.22) 0%, rgba(18, 16, 22, 0.8) 100%);
-  border-color: rgba(16, 185, 129, 0.4);
+  background: linear-gradient(135deg, rgba(16, 185, 129, calc(var(--card-opacity) * 0.44)) 0%, rgba(var(--bg-glass-rgb), var(--card-opacity)) 100%);
+  border-color: rgba(16, 185, 129, calc(var(--card-opacity) * 0.8));
 }
 .mind-card.color-green:hover {
-  border-color: rgba(16, 185, 129, 0.65);
+  border-color: rgba(16, 185, 129, calc(var(--card-opacity) * 0.8 + 0.25));
   box-shadow: 0 12px 30px rgba(16, 185, 129, 0.18);
 }
 .mind-card.color-blue {
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.22) 0%, rgba(18, 16, 22, 0.8) 100%);
-  border-color: rgba(6, 182, 212, 0.4);
+  background: linear-gradient(135deg, rgba(6, 182, 212, calc(var(--card-opacity) * 0.44)) 0%, rgba(var(--bg-glass-rgb), var(--card-opacity)) 100%);
+  border-color: rgba(6, 182, 212, calc(var(--card-opacity) * 0.8));
 }
 .mind-card.color-blue:hover {
-  border-color: rgba(6, 182, 212, 0.65);
+  border-color: rgba(6, 182, 212, calc(var(--card-opacity) * 0.8 + 0.25));
   box-shadow: 0 12px 30px rgba(6, 182, 212, 0.18);
 }
 .mind-card.color-purple {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.22) 0%, rgba(18, 16, 22, 0.8) 100%);
-  border-color: rgba(139, 92, 246, 0.4);
+  background: linear-gradient(135deg, rgba(139, 92, 246, calc(var(--card-opacity) * 0.44)) 0%, rgba(var(--bg-glass-rgb), var(--card-opacity)) 100%);
+  border-color: rgba(139, 92, 246, calc(var(--card-opacity) * 0.8));
 }
 .mind-card.color-purple:hover {
-  border-color: rgba(139, 92, 246, 0.65);
+  border-color: rgba(139, 92, 246, calc(var(--card-opacity) * 0.8 + 0.25));
   box-shadow: 0 12px 30px rgba(139, 92, 246, 0.18);
 }
 .mind-card.color-pink {
-  background: linear-gradient(135deg, rgba(236, 72, 153, 0.22) 0%, rgba(18, 16, 22, 0.8) 100%);
-  border-color: rgba(236, 72, 153, 0.4);
+  background: linear-gradient(135deg, rgba(236, 72, 153, calc(var(--card-opacity) * 0.44)) 0%, rgba(var(--bg-glass-rgb), var(--card-opacity)) 100%);
+  border-color: rgba(236, 72, 153, calc(var(--card-opacity) * 0.8));
 }
 .mind-card.color-pink:hover {
-  border-color: rgba(236, 72, 153, 0.65);
+  border-color: rgba(236, 72, 153, calc(var(--card-opacity) * 0.8 + 0.25));
   box-shadow: 0 12px 30px rgba(236, 72, 153, 0.18);
 }
 
@@ -1860,30 +1964,269 @@ label {
   border-color: var(--border-glass);
 }
 .modal-panel--detail.color-red {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.22) 0%, #121016 100%);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.18) 0%, var(--bg-secondary) 100%);
   border-color: rgba(239, 68, 68, 0.45);
 }
 .modal-panel--detail.color-yellow {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.22) 0%, #121016 100%);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0%, var(--bg-secondary) 100%);
   border-color: rgba(245, 158, 11, 0.45);
 }
 .modal-panel--detail.color-green {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.22) 0%, #121016 100%);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18) 0%, var(--bg-secondary) 100%);
   border-color: rgba(16, 185, 129, 0.45);
 }
 .modal-panel--detail.color-blue {
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.22) 0%, #121016 100%);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.18) 0%, var(--bg-secondary) 100%);
   border-color: rgba(6, 182, 212, 0.45);
 }
 .modal-panel--detail.color-purple {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.22) 0%, #121016 100%);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.18) 0%, var(--bg-secondary) 100%);
   border-color: rgba(139, 92, 246, 0.45);
 }
 .modal-panel--detail.color-pink {
-  background: linear-gradient(135deg, rgba(236, 72, 153, 0.22) 0%, #121016 100%);
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.18) 0%, var(--bg-secondary) 100%);
   border-color: rgba(236, 72, 153, 0.45);
 }
 
 .canvas-section-title {
   font-family: var(--font-sans);
+}
+
+/* ==========================================================================
+   Spatial Canvas (Mind Map) Styles
+   ========================================================================== */
+
+.spatial-canvas-view {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - var(--header-height) - 40px);
+  min-height: 500px;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: radial-gradient(circle at center, rgba(18, 16, 22, 0.4) 0%, rgba(10, 9, 13, 0.95) 100%);
+  border: 1px solid var(--border-glass);
+  margin-block-end: 20px;
+}
+
+@media (max-width: 768px) {
+  .spatial-canvas-view {
+    height: calc(100vh - 140px);
+  }
+}
+
+.spatial-canvas-viewport {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: grab;
+  /* Subtle grid pattern background */
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-size: 50px 50px;
+  background-position: center;
+}
+
+.spatial-canvas-viewport:active {
+  cursor: grabbing;
+}
+
+.spatial-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.canvas-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.canvas-nodes-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.canvas-node-card {
+  position: absolute;
+  width: 280px;
+  margin-block-end: 0 !important;
+  pointer-events: auto;
+  z-index: 10;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-normal);
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.canvas-node-card.dragging {
+  cursor: grabbing;
+  z-index: 100;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+  border-color: var(--accent-purple) !important;
+}
+
+/* Connection Lines styling */
+.canvas-connection-line {
+  fill: none;
+  stroke: rgba(168, 85, 247, 0.25);
+  stroke-width: 3px;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: stroke var(--transition-fast), stroke-width var(--transition-fast), filter var(--transition-fast);
+}
+
+.canvas-connection-line:hover {
+  stroke: var(--accent-purple);
+  stroke-width: 5px;
+  filter: drop-shadow(0 0 6px var(--accent-purple));
+}
+
+/* Temp/linking connection line */
+.canvas-connection-line--temp {
+  stroke: var(--accent-pink);
+  stroke-width: 3px;
+  stroke-dasharray: 6 4;
+  animation: lineDash 0.5s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes lineDash {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+
+/* Floating Zoom & Controls */
+.spatial-canvas-controls {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 100;
+}
+
+.spatial-canvas-controls button {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  color: var(--text-primary);
+  font-size: 1.25rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.spatial-canvas-controls button:hover {
+  background: var(--bg-glass-active);
+  border-color: var(--border-glass-hover);
+  transform: translateY(-2px);
+}
+
+.spatial-canvas-controls button.active {
+  background: var(--accent-purple);
+  border-color: var(--accent-purple);
+  box-shadow: 0 0 12px var(--accent-purple-glow);
+  color: #fff;
+}
+
+/* Radar Minimap */
+.canvas-minimap {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 160px;
+  height: 120px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-sm);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 100;
+  overflow: hidden;
+  pointer-events: none;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.canvas-minimap-viewport {
+  position: absolute;
+  border: 1.5px solid var(--accent-purple);
+  background: rgba(168, 85, 247, 0.08);
+  box-sizing: border-box;
+}
+
+.canvas-minimap-dots {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.minimap-dot {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--text-secondary);
+  transform: translate(-2px, -2px);
+}
+
+.minimap-dot.color-red { background-color: #ef4444; }
+.minimap-dot.color-yellow { background-color: #f59e0b; }
+.minimap-dot.color-green { background-color: #10b981; }
+.minimap-dot.color-blue { background-color: #06b6d4; }
+.minimap-dot.color-purple { background-color: #8b5cf6; }
+.minimap-dot.color-pink { background-color: #ec4899; }
+
+/* Connection / Link mode state styling */
+.spatial-canvas-view.linking-active .canvas-node-card {
+  border-color: rgba(236, 72, 153, 0.3);
+}
+
+.spatial-canvas-view.linking-active .canvas-node-card:hover {
+  border-color: var(--accent-pink) !important;
+  box-shadow: 0 0 10px rgba(236, 72, 153, 0.3);
+}
+
+.spatial-canvas-view .canvas-node-card.linking-source {
+  border-color: var(--accent-pink) !important;
+  box-shadow: 0 0 15px rgba(236, 72, 153, 0.5);
+  animation: pulseLinkingSource 1.5s infinite alternate;
+}
+
+@keyframes pulseLinkingSource {
+  0% {
+    box-shadow: 0 0 8px rgba(236, 72, 153, 0.4);
+  }
+  100% {
+    box-shadow: 0 0 20px rgba(236, 72, 153, 0.8);
+  }
 }

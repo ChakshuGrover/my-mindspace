@@ -33,6 +33,24 @@ let aiSearchAbortController = null;
 let currentDetailItem = null;
 let isEditingDetail = false;
 
+// --- Spatial Canvas (Mind Map) Global State ---
+let currentViewMode = 'grid'; // 'grid' or 'spatial'
+let canvasZoom = 1;
+let canvasPanX = 0;
+let canvasPanY = 0;
+let isPanning = false;
+let panStart = { x: 0, y: 0 };
+let panStartOffset = { x: 0, y: 0 };
+let isLinking = false;
+let linkSourceId = null;
+let activeDragItem = null;
+let activeDragStart = { x: 0, y: 0 };
+let activeDragMouseStart = { x: 0, y: 0 };
+let isDraggingNode = false;
+const nodeSaveDebounceTimers = {};
+let canvasPendingCoords = null;
+let lastRenderedSpatialItems = [];
+
 // Default credentials for sandbox testing (User can override in settings)
 const DEFAULT_CLIENT_ID = '345073896444-jvm03jjn5dn6pfh95d7jbtlh4shq4ooj.apps.googleusercontent.com';
 
@@ -119,8 +137,12 @@ function initApp() {
     safeStorage.setItem(STORAGE_KEYS.CLIENT_ID, DEFAULT_CLIENT_ID);
   }
 
-  // Load configuration into Settings Form
-  document.getElementById('setting-gemini-key').value = safeStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '';
+  // Load configuration and apply appearance
+  const savedMode = safeStorage.getItem('mymind_appearance_mode') || 'dark';
+  const savedTheme = safeStorage.getItem('mymind_appearance_theme') || 'default';
+  const savedOpacity = safeStorage.getItem('mymind_card_opacity') || '0.50';
+  applyThemeAndOpacity(savedMode, savedTheme, savedOpacity);
+  initSettingsForm();
 
   // Bind Event Listeners
   setupEventListeners();
@@ -335,15 +357,38 @@ function setupEventListeners() {
   }
 
   // Modals & Panels open/close
-  document.getElementById('btn-settings').addEventListener('click', () => { openModal('settings-modal'); closeMobileSidebar(); });
-  document.getElementById('btn-mobile-settings').addEventListener('click', () => openModal('settings-modal'));
+  const openSettings = () => {
+    initSettingsForm();
+    openModal('settings-modal');
+    closeMobileSidebar();
+  };
+  document.getElementById('btn-settings').addEventListener('click', openSettings);
+  document.getElementById('btn-mobile-settings').addEventListener('click', openSettings);
   const btnLandingSettings = document.getElementById('btn-landing-settings');
   if (btnLandingSettings) {
-    btnLandingSettings.addEventListener('click', () => openModal('settings-modal'));
+    btnLandingSettings.addEventListener('click', openSettings);
   }
-  document.getElementById('btn-close-settings').addEventListener('click', () => closeModal('settings-modal'));
-  document.getElementById('btn-close-settings-modal').addEventListener('click', () => closeModal('settings-modal'));
-  document.getElementById('settings-modal-backdrop').addEventListener('click', () => closeModal('settings-modal'));
+  
+  const cancelSettings = () => {
+    revertLiveSettings();
+    closeModal('settings-modal');
+  };
+  document.getElementById('btn-close-settings').addEventListener('click', cancelSettings);
+  document.getElementById('btn-close-settings-modal').addEventListener('click', cancelSettings);
+  document.getElementById('settings-modal-backdrop').addEventListener('click', cancelSettings);
+
+  // Live appearance settings changes
+  document.getElementById('setting-appearance-mode').addEventListener('change', (e) => {
+    document.documentElement.setAttribute('data-mode', e.target.value);
+  });
+  document.getElementById('setting-appearance-theme').addEventListener('change', (e) => {
+    document.documentElement.setAttribute('data-theme', e.target.value);
+  });
+  document.getElementById('setting-card-opacity').addEventListener('input', (e) => {
+    const opacityVal = (e.target.value / 100).toFixed(2);
+    document.getElementById('setting-opacity-val').textContent = e.target.value + '%';
+    document.documentElement.style.setProperty('--card-opacity', opacityVal);
+  });
 
   document.getElementById('btn-quick-add').addEventListener('click', () => openModal('add-modal'));
   document.getElementById('btn-cancel-add').addEventListener('click', () => closeModal('add-modal'));
@@ -463,15 +508,32 @@ function setupEventListeners() {
   // Sidebar Views / Filters clicking
   document.querySelectorAll('.sidebar-nav .nav-item').forEach(item => {
     item.addEventListener('click', (e) => {
-      document.querySelectorAll('.sidebar-nav .nav-item, .folder-nav-item').forEach(el => el.classList.remove('active'));
-      e.currentTarget.classList.add('active');
-      currentFilter = e.currentTarget.dataset.filter;
+      const targetId = e.currentTarget.id;
+      
+      if (targetId === 'nav-view-spatial') {
+        currentViewMode = 'spatial';
+        currentFilter = 'all';
+        document.querySelectorAll('.sidebar-nav .nav-item, .folder-nav-item').forEach(el => el.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+      } else if (targetId === 'nav-view-grid') {
+        currentViewMode = 'grid';
+        currentFilter = 'all';
+        document.querySelectorAll('.sidebar-nav .nav-item, .folder-nav-item').forEach(el => el.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+      } else {
+        // Standard category filters (Notes, Articles, To-Dos)
+        document.querySelectorAll('.sidebar-nav .nav-item, .folder-nav-item').forEach(el => el.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+        currentFilter = e.currentTarget.dataset.filter;
+      }
+      
       renderGrid();
       closeMobileSidebar();
     });
   });
 
-
+  // Initialize Spatial Canvas Zoom/Pan/Link Events
+  initSpatialCanvasEvents();
 }
 
 // --- Navigation & Landing UI Switches ---
@@ -1575,6 +1637,13 @@ function extractAndCleanUrl(text) {
 }
 
 async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo = false, color = 'default') {
+  let pendingX = undefined;
+  let pendingY = undefined;
+  if (canvasPendingCoords) {
+    pendingX = canvasPendingCoords.x;
+    pendingY = canvasPendingCoords.y;
+    canvasPendingCoords = null;
+  }
   try {
     // Extract and clean the URL if present
     const cleanedUrl = !isTodo ? extractAndCleanUrl(rawInputText) : null;
@@ -1612,6 +1681,8 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo =
       folders: folderId ? [folderId] : [],
       color: color,
       pinned: false,
+      canvas_x: pendingX,
+      canvas_y: pendingY,
       url: (!isTodo && aiParsed && (aiParsed.type === 'article' || isUrl)) ? (cleanedUrl || rawInputText) : '',
       image: scrapedImage || '',
       ai_analysis: (aiParsed && aiParsed.ai_analysis) || {
@@ -1704,6 +1775,8 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo =
       folders: folderId ? [folderId] : [],
       color: color,
       pinned: false,
+      canvas_x: pendingX,
+      canvas_y: pendingY,
       url: (!isTodo && fallback.type === 'article') ? (cleanedUrl || rawInputText) : '',
       ai_analysis: fallback.ai_analysis,
       content: {
@@ -1877,6 +1950,30 @@ function renderGrid() {
   const pinnedGrid = document.getElementById('pinned-grid');
   const othersTitle = document.getElementById('others-title');
   const othersSection = document.getElementById('others-section');
+
+  if (currentViewMode === 'spatial') {
+    if (pinnedSection) pinnedSection.setAttribute('hidden', 'true');
+    if (othersSection) othersSection.setAttribute('hidden', 'true');
+    if (othersTitle) othersTitle.setAttribute('hidden', 'true');
+    grid.style.display = 'none';
+    
+    const spatialView = document.getElementById('spatial-canvas-view');
+    if (spatialView) {
+      spatialView.removeAttribute('hidden');
+      if (filteredItems.length === 0) {
+        emptyState.removeAttribute('hidden');
+        document.getElementById('spatial-canvas-viewport').style.display = 'none';
+      } else {
+        emptyState.setAttribute('hidden', 'true');
+        document.getElementById('spatial-canvas-viewport').style.display = 'block';
+        renderSpatialCanvas(filteredItems);
+      }
+    }
+    return;
+  } else {
+    const spatialView = document.getElementById('spatial-canvas-view');
+    if (spatialView) spatialView.setAttribute('hidden', 'true');
+  }
 
   if (pinnedGrid) pinnedGrid.innerHTML = '';
 
@@ -2631,17 +2728,60 @@ async function saveDetailEdits() {
 }
 
 // --- Configuration Management ---
+function applyThemeAndOpacity(mode, theme, opacity) {
+  const root = document.documentElement;
+  root.setAttribute('data-mode', mode || 'dark');
+  root.setAttribute('data-theme', theme || 'default');
+  if (opacity !== undefined && opacity !== null) {
+    root.style.setProperty('--card-opacity', opacity);
+  }
+}
+
+function initSettingsForm() {
+  const geminiKey = safeStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '';
+  const mode = safeStorage.getItem('mymind_appearance_mode') || 'dark';
+  const theme = safeStorage.getItem('mymind_appearance_theme') || 'default';
+  const opacity = safeStorage.getItem('mymind_card_opacity') || '0.50';
+
+  const geminiInput = document.getElementById('setting-gemini-key');
+  const modeInput = document.getElementById('setting-appearance-mode');
+  const themeInput = document.getElementById('setting-appearance-theme');
+  const opacityInput = document.getElementById('setting-card-opacity');
+  const opacityVal = document.getElementById('setting-opacity-val');
+
+  if (geminiInput) geminiInput.value = geminiKey;
+  if (modeInput) modeInput.value = mode;
+  if (themeInput) themeInput.value = theme;
+  if (opacityInput) opacityInput.value = Math.round(parseFloat(opacity) * 100);
+  if (opacityVal) opacityVal.textContent = Math.round(parseFloat(opacity) * 100) + '%';
+}
+
+function revertLiveSettings() {
+  const savedMode = safeStorage.getItem('mymind_appearance_mode') || 'dark';
+  const savedTheme = safeStorage.getItem('mymind_appearance_theme') || 'default';
+  const savedOpacity = safeStorage.getItem('mymind_card_opacity') || '0.50';
+  applyThemeAndOpacity(savedMode, savedTheme, savedOpacity);
+}
+
 async function saveSettings(e) {
   e.preventDefault();
   const geminiKey = document.getElementById('setting-gemini-key').value.trim();
+  const mode = document.getElementById('setting-appearance-mode').value;
+  const theme = document.getElementById('setting-appearance-theme').value;
+  const opacity = (document.getElementById('setting-card-opacity').value / 100).toFixed(2);
 
   safeStorage.setItem(STORAGE_KEYS.GEMINI_KEY, geminiKey);
+  safeStorage.setItem('mymind_appearance_mode', mode);
+  safeStorage.setItem('mymind_appearance_theme', theme);
+  safeStorage.setItem('mymind_card_opacity', opacity);
+
+  applyThemeAndOpacity(mode, theme, opacity);
 
   closeModal('settings-modal');
   showToast('Saving settings...');
 
   try {
-    await syncSettingsToDrive(geminiKey);
+    await syncSettingsToDrive(geminiKey, mode, theme, opacity);
     showToast('Settings saved & synced.');
   } catch (err) {
     showToast('Settings saved locally. Sync failed.');
@@ -2705,9 +2845,26 @@ async function loadSettingsFromDrive() {
         const decryptedKey = decryptKey(remoteSettings.encryptedGeminiKey, encryptionKey);
         if (decryptedKey) {
           safeStorage.setItem(STORAGE_KEYS.GEMINI_KEY, decryptedKey);
-          document.getElementById('setting-gemini-key').value = decryptedKey;
+          const geminiInput = document.getElementById('setting-gemini-key');
+          if (geminiInput) geminiInput.value = decryptedKey;
         }
       }
+
+      if (remoteSettings.mode) {
+        safeStorage.setItem('mymind_appearance_mode', remoteSettings.mode);
+      }
+      if (remoteSettings.theme) {
+        safeStorage.setItem('mymind_appearance_theme', remoteSettings.theme);
+      }
+      if (remoteSettings.cardOpacity) {
+        safeStorage.setItem('mymind_card_opacity', remoteSettings.cardOpacity);
+      }
+
+      applyThemeAndOpacity(
+        remoteSettings.mode || 'dark',
+        remoteSettings.theme || 'default',
+        remoteSettings.cardOpacity || '0.50'
+      );
       
       setSyncStatus('synced', 'Synced');
     } else {
@@ -2719,15 +2876,22 @@ async function loadSettingsFromDrive() {
   }
 }
 
-async function syncSettingsToDrive(geminiKey) {
+async function syncSettingsToDrive(geminiKey, mode, theme, opacity) {
   if (!accessToken) return;
   setSyncStatus('syncing', 'Syncing Settings...');
   try {
     const encryptionKey = googleUserId || safeStorage.getItem('mymind_google_user_id') || 'mymindspace_fallback';
     const encryptedGeminiKey = encryptKey(geminiKey, encryptionKey);
 
+    const activeMode = mode || safeStorage.getItem('mymind_appearance_mode') || 'dark';
+    const activeTheme = theme || safeStorage.getItem('mymind_appearance_theme') || 'default';
+    const activeOpacity = opacity || safeStorage.getItem('mymind_card_opacity') || '0.50';
+
     const settingsPayload = {
       encryptedGeminiKey,
+      mode: activeMode,
+      theme: activeTheme,
+      cardOpacity: activeOpacity,
       updated_at: new Date().toISOString()
     };
 
@@ -2970,6 +3134,580 @@ function hideSessionExpiredBanner() {
   if (banner) {
     banner.style.display = 'none';
   }
+}
+
+// ==========================================================================
+// Spatial Canvas (Mind Map) Rendering Engine & Event System
+// ==========================================================================
+
+function resetCanvasView() {
+  const view = document.getElementById('spatial-canvas-view');
+  if (!view) return;
+  canvasPanX = Math.round(view.clientWidth / 2);
+  canvasPanY = Math.round(view.clientHeight / 2);
+  canvasZoom = 1;
+  updateCanvasTransform();
+}
+
+function zoomAtCenter(factor) {
+  const viewport = document.getElementById('spatial-canvas-viewport');
+  if (!viewport) return;
+  const rect = viewport.getBoundingClientRect();
+  const centerX = rect.width / 2;
+  const centerY = rect.height / 2;
+  
+  const canvasX = (centerX - canvasPanX) / canvasZoom;
+  const canvasY = (centerY - canvasPanY) / canvasZoom;
+  
+  canvasZoom = Math.min(Math.max(canvasZoom * factor, 0.15), 3.0);
+  canvasPanX = centerX - canvasX * canvasZoom;
+  canvasPanY = centerY - canvasY * canvasZoom;
+  
+  updateCanvasTransform();
+}
+
+function zoomToFit() {
+  if (lastRenderedSpatialItems.length === 0) {
+    resetCanvasView();
+    return;
+  }
+  
+  const viewport = document.getElementById('spatial-canvas-viewport');
+  if (!viewport) return;
+  
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  
+  lastRenderedSpatialItems.forEach(item => {
+    const cardEl = document.querySelector(`.canvas-node-card[data-id="${item.id}"]`);
+    const w = cardEl ? cardEl.offsetWidth : 280;
+    const h = cardEl ? cardEl.offsetHeight : 180;
+    
+    const x = item.canvas_x || 0;
+    const y = item.canvas_y || 0;
+    
+    if (x < minX) minX = x;
+    if (x + w > maxX) maxX = x + w;
+    if (y < minY) minY = y;
+    if (y + h > maxY) maxY = y + h;
+  });
+  
+  const padding = 60;
+  const boundsW = maxX - minX;
+  const boundsH = maxY - minY;
+  
+  const viewW = viewport.clientWidth;
+  const viewH = viewport.clientHeight;
+  
+  const scaleX = (viewW - padding * 2) / boundsW;
+  const scaleY = (viewH - padding * 2) / boundsH;
+  let newZoom = Math.min(scaleX, scaleY);
+  
+  newZoom = Math.min(Math.max(newZoom, 0.15), 1.5);
+  
+  const boundsCenterX = minX + boundsW / 2;
+  const boundsCenterY = minY + boundsH / 2;
+  
+  canvasZoom = newZoom;
+  canvasPanX = viewW / 2 - boundsCenterX * canvasZoom;
+  canvasPanY = viewH / 2 - boundsCenterY * canvasZoom;
+  
+  updateCanvasTransform();
+}
+
+function toggleLinkMode() {
+  isLinking = !isLinking;
+  const btn = document.getElementById('btn-canvas-link-mode');
+  const view = document.getElementById('spatial-canvas-view');
+  
+  if (isLinking) {
+    btn.classList.add('active');
+    view.classList.add('linking-active');
+    showToast('Connection Mode active. Click two cards to link/unlink them.');
+  } else {
+    btn.classList.remove('active');
+    view.classList.remove('linking-active');
+    if (linkSourceId) {
+      const card = document.querySelector(`.canvas-node-card[data-id="${linkSourceId}"]`);
+      if (card) card.classList.remove('linking-source');
+      linkSourceId = null;
+    }
+  }
+}
+
+function updateCanvasTransform() {
+  const canvas = document.getElementById('spatial-canvas');
+  if (canvas) {
+    canvas.style.transform = `translate(${canvasPanX}px, ${canvasPanY}px) scale(${canvasZoom})`;
+  }
+  updateMinimap(lastRenderedSpatialItems);
+}
+
+function debounceSaveItem(item) {
+  if (nodeSaveDebounceTimers[item.id]) {
+    clearTimeout(nodeSaveDebounceTimers[item.id]);
+  }
+  
+  nodeSaveDebounceTimers[item.id] = setTimeout(async () => {
+    delete nodeSaveDebounceTimers[item.id];
+    setSyncStatus('syncing', 'Syncing position...');
+    try {
+      await uploadFileContent(item._drive_file_id, item);
+      saveFilesCache();
+      setSyncStatus('synced', 'Synced');
+    } catch (err) {
+      console.error('Failed to update node coordinates on Google Drive:', err);
+      setSyncStatus('synced', 'Sync Failed');
+    }
+  }, 1200);
+}
+
+function drawConnections(items) {
+  const svg = document.getElementById('canvas-svg');
+  if (!svg) return;
+  
+  svg.innerHTML = '';
+  const renderedLineKeys = new Set();
+  
+  items.forEach(A => {
+    if (!A.connections || A.connections.length === 0) return;
+    
+    const elA = document.querySelector(`.canvas-node-card[data-id="${A.id}"]`);
+    if (!elA) return;
+    
+    const wA = elA.offsetWidth || 280;
+    const hA = elA.offsetHeight || 150;
+    const x1 = (A.canvas_x || 0) + wA / 2;
+    const y1 = (A.canvas_y || 0) + hA / 2;
+    
+    A.connections.forEach(targetId => {
+      const lineKey = A.id < targetId ? `${A.id}-${targetId}` : `${targetId}-${A.id}`;
+      if (renderedLineKeys.has(lineKey)) return;
+      
+      const B = items.find(x => x.id === targetId);
+      if (!B) return;
+      
+      const elB = document.querySelector(`.canvas-node-card[data-id="${B.id}"]`);
+      if (!elB) return;
+      
+      const wB = elB.offsetWidth || 280;
+      const hB = elB.offsetHeight || 150;
+      const x2 = (B.canvas_x || 0) + wB / 2;
+      const y2 = (B.canvas_y || 0) + hB / 2;
+      
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const cx1 = x1 + dx * 0.4;
+      const cy1 = y1;
+      const cx2 = x2 - dx * 0.4;
+      const cy2 = y2;
+      
+      const pathData = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+      
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', pathData);
+      path.setAttribute('class', 'canvas-connection-line');
+      path.dataset.sourceId = A.id;
+      path.dataset.targetId = B.id;
+      
+      path.addEventListener('dblclick', async (e) => {
+        e.stopPropagation();
+        const confirmed = await showConfirm(
+          'Delete Connection',
+          'Are you sure you want to disconnect these notes?',
+          'Disconnect',
+          'Cancel'
+        );
+        if (confirmed) {
+          A.connections = A.connections.filter(id => id !== targetId);
+          debounceSaveItem(A);
+          
+          if (B.connections) {
+            B.connections = B.connections.filter(id => id !== A.id);
+            debounceSaveItem(B);
+          }
+          
+          drawConnections(items);
+        }
+      });
+      
+      svg.appendChild(path);
+      renderedLineKeys.add(lineKey);
+    });
+  });
+}
+
+function updateMinimap(items) {
+  const minimap = document.getElementById('canvas-minimap');
+  const viewportBox = document.getElementById('canvas-minimap-viewport');
+  const dotsContainer = document.getElementById('canvas-minimap-dots');
+  
+  if (!minimap || !viewportBox || !dotsContainer) return;
+  
+  if (items.length === 0) {
+    minimap.style.display = 'none';
+    return;
+  }
+  minimap.style.display = 'block';
+  dotsContainer.innerHTML = '';
+  
+  const viewport = document.getElementById('spatial-canvas-viewport');
+  if (!viewport) return;
+  
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  
+  items.forEach(item => {
+    const x = item.canvas_x || 0;
+    const y = item.canvas_y || 0;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  });
+  
+  minX -= 300;
+  maxX += 580;
+  minY -= 300;
+  maxY += 450;
+  
+  const boundsW = maxX - minX;
+  const boundsH = maxY - minY;
+  
+  const mapW = 160;
+  const mapH = 120;
+  
+  const scaleX = mapW / boundsW;
+  const scaleY = mapH / boundsH;
+  const mapScale = Math.min(scaleX, scaleY);
+  
+  const offsetX = (mapW - boundsW * mapScale) / 2;
+  const offsetY = (mapH - boundsH * mapScale) / 2;
+  
+  items.forEach(item => {
+    const x = item.canvas_x || 0;
+    const y = item.canvas_y || 0;
+    
+    const dot = document.createElement('div');
+    dot.className = `minimap-dot color-${item.color || 'default'}`;
+    dot.style.left = `${(x - minX) * mapScale + offsetX}px`;
+    dot.style.top = `${(y - minY) * mapScale + offsetY}px`;
+    dotsContainer.appendChild(dot);
+  });
+  
+  const viewW = viewport.clientWidth;
+  const viewH = viewport.clientHeight;
+  
+  const viewLeft = -canvasPanX / canvasZoom;
+  const viewTop = -canvasPanY / canvasZoom;
+  const viewRight = (viewW - canvasPanX) / canvasZoom;
+  const viewBottom = (viewH - canvasPanY) / canvasZoom;
+  
+  const viewMapLeft = Math.max(0, (viewLeft - minX) * mapScale + offsetX);
+  const viewMapTop = Math.max(0, (viewTop - minY) * mapScale + offsetY);
+  const viewMapRight = Math.min(mapW, (viewRight - minX) * mapScale + offsetX);
+  const viewMapBottom = Math.min(mapH, (viewBottom - minY) * mapScale + offsetY);
+  
+  viewportBox.style.left = `${viewMapLeft}px`;
+  viewportBox.style.top = `${viewMapTop}px`;
+  viewportBox.style.width = `${Math.max(4, viewMapRight - viewMapLeft)}px`;
+  viewportBox.style.height = `${Math.max(4, viewMapBottom - viewMapTop)}px`;
+}
+
+function renderSpatialCanvas(items) {
+  lastRenderedSpatialItems = items;
+  
+  items.forEach((item, index) => {
+    if (item.canvas_x === undefined || item.canvas_y === undefined) {
+      const angle = 0.5 * index;
+      const radius = 80 * Math.sqrt(index) + 120;
+      item.canvas_x = Math.round(radius * Math.cos(angle));
+      item.canvas_y = Math.round(radius * Math.sin(angle));
+      debounceSaveItem(item);
+    }
+  });
+
+  const container = document.getElementById('canvas-nodes-container');
+  if (!container) return;
+  container.innerHTML = '';
+  
+  items.forEach(item => {
+    const card = document.createElement('div');
+    card.dataset.id = item.id;
+    card.className = `mind-card mind-card--${item.type} color-${item.color || 'default'} canvas-node-card`;
+    
+    card.style.left = `${item.canvas_x}px`;
+    card.style.top = `${item.canvas_y}px`;
+    
+    if (item.type === 'todo') {
+      const todos = item.content.todos || [];
+      const visibleTodos = todos.slice(0, 5);
+      const remainingCount = todos.length - visibleTodos.length;
+      
+      const todoListHtml = visibleTodos.map((todo, idx) => `
+        <label class="card-todo-item" style="display: flex; align-items: flex-start; gap: 8px; font-size: 0.9rem; margin-block-end: 6px; cursor: pointer; pointer-events: auto;">
+          <input type="checkbox" class="card-todo-checkbox" data-item-id="${item.id}" data-todo-index="${idx}" ${todo.completed ? 'checked' : ''} style="margin-block-start: 3px;" />
+          <span class="card-todo-text" style="text-decoration: ${todo.completed ? 'line-through' : 'none'}; color: ${todo.completed ? 'var(--text-muted)' : 'var(--text-primary)'};">${todo.text}</span>
+        </label>
+      `).join('');
+
+      card.innerHTML = `
+        <div class="card-note-title" style="margin-block-end: 12px; padding-inline-end: 28px;">${item.title}</div>
+        <div class="card-todo-list" style="margin-block-end: 12px; pointer-events: auto;">
+          ${todoListHtml || '<div style="color: var(--text-muted); font-style: italic;">Empty list</div>'}
+          ${remainingCount > 0 ? `<div style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-inline-start: 22px; margin-block-start: 4px;">+ ${remainingCount} more tasks</div>` : ''}
+        </div>
+        <div class="card-meta">
+          <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
+        </div>
+      `;
+    }
+    else if (item.type === 'article') {
+      const thumbImg = item.image ? `<img class="card-article-thumb" src="${item.image}" alt="${item.title}" onerror="this.style.display='none';" />` : '';
+      card.innerHTML = `
+        ${thumbImg}
+        <div class="card-article-content">
+          <div class="card-article-source" style="padding-inline-end: 28px;">${item.title}</div>
+          <div class="card-article-title">${item.ai_analysis.detailed_summary || item.ai_analysis.summary}</div>
+          <div class="card-meta">
+            <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
+          </div>
+        </div>
+      `;
+    } 
+    else { // note
+      card.innerHTML = `
+        <div class="card-note-title" style="padding-inline-end: 28px;">${item.title}</div>
+        <div class="card-note-desc">${item.ai_analysis.detailed_summary || item.ai_analysis.summary}</div>
+        <div class="card-meta">
+          <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
+        </div>
+      `;
+    }
+
+    const pinBtn = document.createElement('button');
+    pinBtn.className = `card-pin-btn ${item.pinned ? 'is-pinned' : ''}`;
+    pinBtn.title = item.pinned ? 'Unpin note' : 'Pin note';
+    pinBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="${item.pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="17" x2="12" y2="22"></line>
+        <path d="M5 17h14v-1.76a2 2 0 0 0-.44-1.24l-2.78-3.5A2 2 0 0 1 15 9.26V5a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4.26a2 2 0 0 1-.78 1.24l-2.78 3.5a2 2 0 0 0-.44 1.24z"></path>
+      </svg>
+    `;
+    pinBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePin(item);
+    });
+    card.appendChild(pinBtn);
+
+    card.addEventListener('click', (e) => {
+      if (e.target.classList.contains('card-todo-checkbox') || e.target.closest('.card-pin-btn') || isLinking) {
+        return;
+      }
+      showDetailModal(item);
+    });
+
+    card.querySelectorAll('.card-todo-checkbox').forEach(cb => {
+      cb.addEventListener('change', async (e) => {
+        const idx = parseInt(e.target.dataset.todoIndex, 10);
+        if (!item.content.todos) item.content.todos = [];
+        item.content.todos[idx].completed = cb.checked;
+        
+        const textEl = cb.nextElementSibling;
+        if (textEl) {
+          textEl.style.textDecoration = cb.checked ? 'line-through' : 'none';
+          textEl.style.color = cb.checked ? 'var(--text-muted)' : 'var(--text-primary)';
+        }
+
+        setSyncStatus('syncing', 'Updating task...');
+        try {
+          await uploadFileContent(item._drive_file_id, item);
+          saveFilesCache();
+          setSyncStatus('synced', 'Synced');
+        } catch (err) {
+          console.error('Failed to update task state on Drive:', err);
+          showToast('Sync failed.');
+          setSyncStatus('synced', 'Sync Failed');
+        }
+      });
+    });
+    
+    if (isLinking && linkSourceId === item.id) {
+      card.classList.add('linking-source');
+    }
+
+    container.appendChild(card);
+  });
+
+  if (canvasPanX === 0 && canvasPanY === 0) {
+    resetCanvasView();
+  }
+
+  drawConnections(items);
+  updateMinimap(items);
+}
+
+function initSpatialCanvasEvents() {
+  const viewport = document.getElementById('spatial-canvas-viewport');
+  const btnZoomIn = document.getElementById('btn-canvas-zoom-in');
+  const btnZoomOut = document.getElementById('btn-canvas-zoom-out');
+  const btnZoomFit = document.getElementById('btn-canvas-zoom-fit');
+  const btnLinkMode = document.getElementById('btn-canvas-link-mode');
+  
+  if (!viewport) return;
+  
+  viewport.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    
+    const canvasX = (mouseX - canvasPanX) / canvasZoom;
+    const canvasY = (mouseY - canvasPanY) / canvasZoom;
+    
+    const zoomFactor = 1.12;
+    let newZoom = canvasZoom;
+    if (e.deltaY < 0) {
+      newZoom = Math.min(newZoom * zoomFactor, 3.0);
+    } else {
+      newZoom = Math.max(newZoom / zoomFactor, 0.15);
+    }
+    
+    canvasPanX = mouseX - canvasX * newZoom;
+    canvasPanY = mouseY - canvasY * newZoom;
+    canvasZoom = newZoom;
+    
+    updateCanvasTransform();
+  }, { passive: false });
+  
+  viewport.addEventListener('mousedown', (e) => {
+    const cardEl = e.target.closest('.canvas-node-card');
+    
+    if (cardEl) {
+      if (e.target.closest('button') || e.target.closest('input') || e.target.closest('a')) {
+        return;
+      }
+      
+      const cardId = cardEl.dataset.id;
+      const item = driveFiles.find(x => x.id === cardId);
+      if (!item) return;
+      
+      if (isLinking) {
+        e.stopPropagation();
+        if (linkSourceId === null) {
+          linkSourceId = item.id;
+          cardEl.classList.add('linking-source');
+          showToast('Source card selected. Now click the target card to connect.');
+        } else if (linkSourceId === item.id) {
+          cardEl.classList.remove('linking-source');
+          linkSourceId = null;
+          showToast('Selection cleared.');
+        } else {
+          const sourceItem = driveFiles.find(x => x.id === linkSourceId);
+          if (sourceItem) {
+            sourceItem.connections = sourceItem.connections || [];
+            item.connections = item.connections || [];
+            
+            if (sourceItem.connections.includes(item.id)) {
+              sourceItem.connections = sourceItem.connections.filter(id => id !== item.id);
+              item.connections = item.connections.filter(id => id !== sourceItem.id);
+              showToast('Notes disconnected.');
+            } else {
+              sourceItem.connections.push(item.id);
+              item.connections.push(sourceItem.id);
+              showToast('Notes connected!');
+            }
+            
+            debounceSaveItem(sourceItem);
+            debounceSaveItem(item);
+            
+            const prevSourceEl = document.querySelector(`.canvas-node-card[data-id="${linkSourceId}"]`);
+            if (prevSourceEl) prevSourceEl.classList.remove('linking-source');
+            
+            linkSourceId = null;
+            drawConnections(lastRenderedSpatialItems);
+          }
+        }
+      } else {
+        activeDragItem = item;
+        isDraggingNode = true;
+        activeDragStart.x = item.canvas_x || 0;
+        activeDragStart.y = item.canvas_y || 0;
+        activeDragMouseStart.x = e.clientX;
+        activeDragMouseStart.y = e.clientY;
+        cardEl.classList.add('dragging');
+        e.preventDefault();
+      }
+    } else {
+      isPanning = true;
+      panStart.x = e.clientX;
+      panStart.y = e.clientY;
+      panStartOffset.x = canvasPanX;
+      panStartOffset.y = canvasPanY;
+    }
+  });
+  
+  window.addEventListener('mousemove', (e) => {
+    if (isDraggingNode && activeDragItem) {
+      const dx = (e.clientX - activeDragMouseStart.x) / canvasZoom;
+      const dy = (e.clientY - activeDragMouseStart.y) / canvasZoom;
+      
+      const newX = Math.round(activeDragStart.x + dx);
+      const newY = Math.round(activeDragStart.y + dy);
+      
+      activeDragItem.canvas_x = newX;
+      activeDragItem.canvas_y = newY;
+      
+      const cardEl = document.querySelector(`.canvas-node-card[data-id="${activeDragItem.id}"]`);
+      if (cardEl) {
+        cardEl.style.left = `${newX}px`;
+        cardEl.style.top = `${newY}px`;
+      }
+      
+      drawConnections(lastRenderedSpatialItems);
+      updateMinimap(lastRenderedSpatialItems);
+    } else if (isPanning) {
+      canvasPanX = panStartOffset.x + (e.clientX - panStart.x);
+      canvasPanY = panStartOffset.y + (e.clientY - panStart.y);
+      updateCanvasTransform();
+    }
+  });
+  
+  window.addEventListener('mouseup', () => {
+    if (isDraggingNode && activeDragItem) {
+      const cardEl = document.querySelector(`.canvas-node-card[data-id="${activeDragItem.id}"]`);
+      if (cardEl) {
+        cardEl.classList.remove('dragging');
+      }
+      debounceSaveItem(activeDragItem);
+      isDraggingNode = false;
+      activeDragItem = null;
+    }
+    isPanning = false;
+  });
+  
+  viewport.addEventListener('dblclick', (e) => {
+    if (e.target === viewport || e.target.id === 'spatial-canvas') {
+      const rect = viewport.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      const canvasX = Math.round((mouseX - canvasPanX) / canvasZoom);
+      const canvasY = Math.round((mouseY - canvasPanY) / canvasZoom);
+      
+      canvasPendingCoords = { x: canvasX, y: canvasY };
+      openModal('add-modal');
+    }
+  });
+  
+  if (btnZoomIn) btnZoomIn.addEventListener('click', () => zoomAtCenter(1.25));
+  if (btnZoomOut) btnZoomOut.addEventListener('click', () => zoomAtCenter(1 / 1.25));
+  if (btnZoomFit) btnZoomFit.addEventListener('click', zoomToFit);
+  if (btnLinkMode) btnLinkMode.addEventListener('click', toggleLinkMode);
 }
 
 

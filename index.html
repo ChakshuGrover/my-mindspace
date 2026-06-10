@@ -95,8 +95,11 @@
       <nav class="sidebar-nav">
         <div class="nav-section">
           <h4 class="nav-section-title">Views</h4>
-          <button class="nav-item active" data-filter="all">
+          <button class="nav-item active" data-filter="all" id="nav-view-grid">
             <span class="nav-icon">🧠</span> All Mind
+          </button>
+          <button class="nav-item" id="nav-view-spatial" style="margin-block-start: 4px;">
+            <span class="nav-icon">🕸️</span> Spatial Canvas
           </button>
         </div>
 
@@ -245,6 +248,28 @@
           <h3>Your mind is completely clear.</h3>
           <p>Click the addition button below to save notes, quotes, colors, or links.</p>
         </div>
+
+        <!-- Spatial Canvas View Container -->
+        <div id="spatial-canvas-view" class="spatial-canvas-view" hidden>
+          <div class="spatial-canvas-controls">
+            <button type="button" id="btn-canvas-zoom-in" title="Zoom In">＋</button>
+            <button type="button" id="btn-canvas-zoom-out" title="Zoom Out">－</button>
+            <button type="button" id="btn-canvas-zoom-fit" title="Zoom to Fit">🎯</button>
+            <button type="button" id="btn-canvas-link-mode" title="Toggle Connection Mode">🔗</button>
+          </div>
+          <div id="spatial-canvas-viewport" class="spatial-canvas-viewport">
+            <div id="spatial-canvas" class="spatial-canvas">
+              <svg id="canvas-svg" class="canvas-svg"></svg>
+              <div id="canvas-nodes-container" class="canvas-nodes-container"></div>
+            </div>
+          </div>
+          <!-- Minimap (Radar) -->
+          <div class="canvas-minimap" id="canvas-minimap">
+            <div class="canvas-minimap-viewport" id="canvas-minimap-viewport"></div>
+            <!-- small dots representing items -->
+            <div class="canvas-minimap-dots" id="canvas-minimap-dots"></div>
+          </div>
+        </div>
       </section>
 
       <!-- Float Actions (Add Card Button) -->
@@ -334,6 +359,39 @@
             <label class="form-label">
               <span>Gemini API Key</span>
               <input type="password" id="setting-gemini-key" placeholder="Enter your Gemini API Key" />
+            </label>
+          </section>
+
+          <section class="settings-section">
+            <h4 class="settings-title">Appearance & Styling</h4>
+            <p class="settings-hint">Customize the color palette, design theme, and transparency of cards.</p>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <label class="select-label">
+                <span>Theme Mode</span>
+                <select id="setting-appearance-mode">
+                  <option value="dark">Aesthetic Dark</option>
+                  <option value="light">Pure Light</option>
+                </select>
+              </label>
+
+              <label class="select-label">
+                <span>Accent Palette</span>
+                <select id="setting-appearance-theme">
+                  <option value="default">Violet Glow (Default)</option>
+                  <option value="cyberpunk">Cyberpunk Neon</option>
+                  <option value="sakura">Sakura Rose</option>
+                  <option value="sage">Sage Forest</option>
+                </select>
+              </label>
+            </div>
+
+            <label class="form-label" style="margin-top: 12px; margin-bottom: 0;">
+              <span style="display: flex; justify-content: space-between;">
+                <span>Card Opacity</span>
+                <strong id="setting-opacity-val">50%</strong>
+              </span>
+              <input type="range" id="setting-card-opacity" min="10" max="100" value="50" step="5" style="width: 100%; margin-top: 8px;" />
             </label>
           </section>
 
