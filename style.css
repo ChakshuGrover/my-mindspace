@@ -1620,7 +1620,7 @@ html {
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.3);
     border-inline-end: 1px solid var(--border-glass-hover);
     display: flex; /* Ensure display is flex overriding display: none */
-    padding-top: env(safe-area-inset-top, 0px);
+    padding-top: calc(32px + env(safe-area-inset-top, 0px));
     padding-bottom: calc(32px + env(safe-area-inset-bottom)); /* Offset home indicator and dynamic bottom bars */
   }
 
@@ -1643,10 +1643,15 @@ html {
   .mobile-brand {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
     font-weight: 700;
-    font-size: 1.2rem;
+    font-size: 1.3rem;
     letter-spacing: -0.04em;
+  }
+
+  .mobile-brand .brand-logo {
+    inline-size: 28px;
+    block-size: 28px;
   }
 
   .mobile-header-actions {
