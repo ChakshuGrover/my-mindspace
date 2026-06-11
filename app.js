@@ -35,6 +35,8 @@ let isEditingDetail = false;
 let activeAddType = 'general'; // 'general', 'note', 'todo', 'link'
 let chatFocusItem = null;
 let openChatFn = null;
+let attachedFile = null;
+const fileBlobUrlCache = {};
 
 // --- Spatial Canvas (Mind Map) Global State ---
 let currentViewMode = 'grid'; // 'grid' or 'spatial'
@@ -706,9 +708,27 @@ function setupEventListeners() {
           titleInput.placeholder = 'Link Title (Optional)...';
           titleInput.style.display = 'block';
         }
+      } else if (type === 'file') {
+        if (addModalTitle) addModalTitle.textContent = 'Upload Image or PDF';
+        if (addInput) addInput.placeholder = 'Add optional notes or description...';
+        if (todoContainer) todoContainer.style.display = 'none';
+        if (titleInput) {
+          titleInput.placeholder = 'File Title...';
+          titleInput.style.display = 'block';
+        }
+        const fileInputEl = document.getElementById('add-modal-file-input');
+        if (fileInputEl) {
+          fileInputEl.value = '';
+          fileInputEl.click();
+        }
       } else {
         if (addModalTitle) addModalTitle.textContent = 'Remember Something';
         if (addInput) addInput.placeholder = 'Paste a link, write a note, or write a checklist...';
+      }
+
+      // Reset attached file state
+      if (type !== 'file') {
+        removeAttachedFile();
       }
 
       fabContainer.classList.remove('open');
@@ -718,6 +738,29 @@ function setupEventListeners() {
     document.getElementById('btn-add-note').addEventListener('click', () => configureAddModal('note'));
     document.getElementById('btn-add-todo').addEventListener('click', () => configureAddModal('todo'));
     document.getElementById('btn-add-link').addEventListener('click', () => configureAddModal('link'));
+    document.getElementById('btn-add-file').addEventListener('click', () => configureAddModal('file'));
+
+    // File input and attachment bindings
+    const btnAttach = document.getElementById('btn-add-modal-attach');
+    const fileInput = document.getElementById('add-modal-file-input');
+    const btnRemoveFile = document.getElementById('btn-remove-attached-file');
+
+    if (btnAttach && fileInput) {
+      btnAttach.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+          handleAttachedFile(e.target.files[0]);
+        }
+      });
+    }
+
+    if (btnRemoveFile) {
+      btnRemoveFile.addEventListener('click', removeAttachedFile);
+    }
+
+    // Initialize drag & drop + paste listeners
+    initDragAndDrop();
+    initPasteHandler();
   } else {
     document.getElementById('btn-quick-add').addEventListener('click', () => {
       if (currentViewMode === 'spatial') {
@@ -1957,14 +2000,19 @@ async function saveNewItem() {
     }
   }
 
+  // Read selected color from Quick Add swatches
+  const activeSwatch = document.querySelector('#add-modal .color-swatch.active');
+  const selectedColor = activeSwatch ? activeSwatch.dataset.color : 'default';
+
+  if (attachedFile) {
+    saveNewFileItem(attachedFile, rawInputText, folderId, selectedColor, customTitle);
+    return;
+  }
+
   if (!rawInputText) {
     showToast('Input cannot be empty.');
     return;
   }
-
-  // Read selected color from Quick Add swatches
-  const activeSwatch = document.querySelector('#add-modal .color-swatch.active');
-  const selectedColor = activeSwatch ? activeSwatch.dataset.color : 'default';
 
   // Close modal and reset input immediately!
   addInput.value = '';
@@ -2296,6 +2344,22 @@ async function deleteItem(itemId, driveFileId) {
 
   ensureValidToken(async () => {
     try {
+      // Find item to check if it has an associated binary file
+      const itemToDelete = driveFiles.find(item => item.id === itemId);
+      if (itemToDelete && itemToDelete.file_id) {
+        try {
+          const binaryRes = await fetch(`https://www.googleapis.com/drive/v3/files/${itemToDelete.file_id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+          if (!binaryRes.ok && binaryRes.status !== 404 && binaryRes.status !== 410) {
+            console.warn(`Failed to delete associated binary file ${itemToDelete.file_id}: ${binaryRes.status}`);
+          }
+        } catch (binErr) {
+          console.warn('Failed to delete associated binary file from Drive:', binErr);
+        }
+      }
+
       if (driveFileId) {
         // Delete file from Google Drive
         const res = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}`, {
@@ -2353,6 +2417,8 @@ function renderGrid() {
       } else if (currentFilter === 'type-article' && item.type !== 'article') return false;
       else if (currentFilter === 'type-note' && item.type !== 'note') return false;
       else if (currentFilter === 'type-todo' && item.type !== 'todo') return false;
+      else if (currentFilter === 'type-image' && item.type !== 'image') return false;
+      else if (currentFilter === 'type-pdf' && item.type !== 'pdf') return false;
       return true;
     });
   } else {
@@ -2364,6 +2430,8 @@ function renderGrid() {
       } else if (currentFilter === 'type-article' && item.type !== 'article') return false;
       else if (currentFilter === 'type-note' && item.type !== 'note') return false;
       else if (currentFilter === 'type-todo' && item.type !== 'todo') return false;
+      else if (currentFilter === 'type-image' && item.type !== 'image') return false;
+      else if (currentFilter === 'type-pdf' && item.type !== 'pdf') return false;
 
       if (query) {
         const searchInTitle = item.title ? item.title.toLowerCase().includes(query) : false;
@@ -2494,6 +2562,60 @@ function renderGrid() {
           </div>
         `;
       } 
+      else if (item.type === 'image') {
+        card.innerHTML = `
+          <div class="card-image-preview-wrapper">
+            <div class="card-image-loading-placeholder">
+              <svg class="spinner-svg" viewBox="0 0 24 24" width="16" height="16" style="animation: spin 1s linear infinite;">
+                <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="32" stroke-linecap="round" />
+              </svg>
+              <span>Loading Image...</span>
+            </div>
+          </div>
+          <div class="card-article-content">
+            <div class="card-article-source" style="padding-inline-end: 28px;">📷 ${item.title}</div>
+            <div class="card-article-title" style="margin-block-start: 4px;">${item.ai_analysis.summary}</div>
+            <div class="card-meta">
+              <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
+            </div>
+          </div>
+        `;
+        
+        if (item.file_id) {
+          getDriveFileBlobUrl(item.file_id).then(blobUrl => {
+            const wrapper = card.querySelector('.card-image-preview-wrapper');
+            if (wrapper) {
+              if (blobUrl) {
+                wrapper.innerHTML = `<img class="card-grid-image" src="${blobUrl}" alt="${item.title}" style="width: 100%; display: block; object-fit: cover; max-height: 220px;" />`;
+              } else {
+                wrapper.innerHTML = `<div class="card-image-error" style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 0.85rem;">Failed to load image</div>`;
+              }
+            }
+          });
+        }
+      }
+      else if (item.type === 'pdf') {
+        card.innerHTML = `
+          <div class="card-pdf-wrapper" style="padding: 16px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border-glass); background: rgba(239, 68, 68, 0.05);">
+            <div class="card-pdf-icon" style="color: #ef4444; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+              <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+              </svg>
+            </div>
+            <div style="overflow: hidden;">
+              <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${item.title}</div>
+              <div style="font-size: 0.75rem; color: var(--text-muted); margin-block-start: 2px;">PDF Document • ${formatBytes(item.file_size)}</div>
+            </div>
+          </div>
+          <div class="card-article-content">
+            <div class="card-article-title">${item.ai_analysis.summary}</div>
+            <div class="card-meta">
+              <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
+            </div>
+          </div>
+        `;
+      }
       else { // note
         card.innerHTML = `
           <div class="card-note-title" style="padding-inline-end: 28px;">${item.title}</div>
@@ -2806,7 +2928,156 @@ function showDetailModal(item) {
         ` : ''}
       </div>
     `;
-  } 
+  }
+  else if (item.type === 'image') {
+    contentContainer.innerHTML = `
+      <div class="detail-content">
+        <div class="detail-image-preview-container" id="detail-img-container-${item.id}" style="width: 100%; border-radius: 12px; overflow: hidden; background: rgba(0, 0, 0, 0.2); display: flex; align-items: center; justify-content: center; margin-block-end: 20px; border: 1px solid var(--border-glass); min-height: 200px; max-height: 500px;">
+          <div class="detail-image-loading-placeholder" style="color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
+            <svg class="spinner-svg" viewBox="0 0 24 24" width="20" height="20" style="animation: spin 1s linear infinite;">
+              <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="32" stroke-linecap="round" />
+            </svg>
+            <span>Loading image...</span>
+          </div>
+        </div>
+        
+        <h2 class="detail-title">${item.title}</h2>
+        
+        <div class="detail-summary-box">
+          <div class="detail-summary-title">Image Analysis / Abstract</div>
+          <p>${item.ai_analysis.summary}</p>
+        </div>
+
+        ${item.ai_analysis.detailed_summary ? `
+          <div class="detail-summary-box" style="margin-block-start: 16px;">
+            <div class="detail-summary-title">Visual Details & Description</div>
+            <p>${item.ai_analysis.detailed_summary}</p>
+          </div>
+        ` : ''}
+
+        ${item.ai_analysis.key_takeaways && item.ai_analysis.key_takeaways.length > 0 ? `
+          <div style="margin-block-start: 20px;">
+            <h4 class="detail-summary-title" style="margin-block-end: 16px;">Extracted Info & Takeaways</h4>
+            <div class="detail-key-points">
+              ${item.ai_analysis.key_takeaways.map(pt => `
+                <div class="detail-point-item">
+                  <span class="detail-point-bullet">✦</span>
+                  <span>${pt}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        ${item.content.raw_text ? `
+          <div style="margin-block-start: 20px;">
+            <h4 class="detail-summary-title" style="margin-block-end: 16px;">Personal Notes</h4>
+            <div class="detail-body-text markdown-rendered">${renderMarkdown(item.content.raw_text)}</div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+
+    if (item.file_id) {
+      getDriveFileBlobUrl(item.file_id).then(blobUrl => {
+        const container = document.getElementById(`detail-img-container-${item.id}`);
+        if (container) {
+          if (blobUrl) {
+            container.innerHTML = `<img src="${blobUrl}" alt="${item.title}" style="max-width: 100%; max-height: 500px; object-fit: contain; display: block; cursor: pointer;" id="detail-image-img" />`;
+            document.getElementById('detail-image-img').addEventListener('click', () => {
+              window.open(blobUrl, '_blank');
+            });
+          } else {
+            container.innerHTML = `<div style="color: #ef4444; padding: 20px;">Failed to load image from Google Drive</div>`;
+          }
+        }
+      });
+    }
+  }
+  else if (item.type === 'pdf') {
+    contentContainer.innerHTML = `
+      <div class="detail-content">
+        <div class="detail-pdf-box" style="padding: 24px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); margin-block-end: 20px; text-align: center;">
+          <div style="color: #ef4444;">
+            <svg viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+          </div>
+          <div>
+            <h3 style="font-size: 1.15rem; font-weight: 600; margin-block-end: 4px; color: var(--text-primary);">${item.title}</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">${formatBytes(item.file_size)} • PDF Document</p>
+          </div>
+          <button type="button" class="btn btn--primary" id="btn-open-pdf-${item.id}" style="display: flex; align-items: center; gap: 8px; font-size: 0.95rem; padding: 10px 20px;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <line x1="10" y1="14" x2="21" y2="3"></line>
+            </svg>
+            <span>Open PDF Document</span>
+          </button>
+        </div>
+        
+        <h2 class="detail-title">${item.title}</h2>
+        
+        <div class="detail-summary-box">
+          <div class="detail-summary-title">Document Abstract</div>
+          <p>${item.ai_analysis.summary}</p>
+        </div>
+
+        ${item.ai_analysis.detailed_summary ? `
+          <div class="detail-summary-box" style="margin-block-start: 16px;">
+            <div class="detail-summary-title">Detailed Analysis & Key Content</div>
+            <p>${item.ai_analysis.detailed_summary}</p>
+          </div>
+        ` : ''}
+
+        ${item.ai_analysis.key_takeaways && item.ai_analysis.key_takeaways.length > 0 ? `
+          <div style="margin-block-start: 20px;">
+            <h4 class="detail-summary-title" style="margin-block-end: 16px;">Key Findings & Insights</h4>
+            <div class="detail-key-points">
+              ${item.ai_analysis.key_takeaways.map(pt => `
+                <div class="detail-point-item">
+                  <span class="detail-point-bullet">✦</span>
+                  <span>${pt}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        ${item.content.raw_text ? `
+          <div style="margin-block-start: 20px;">
+            <h4 class="detail-summary-title" style="margin-block-end: 16px;">Personal Notes</h4>
+            <div class="detail-body-text markdown-rendered">${renderMarkdown(item.content.raw_text)}</div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+
+    const btnOpenPdf = document.getElementById(`btn-open-pdf-${item.id}`);
+    if (btnOpenPdf && item.file_id) {
+      btnOpenPdf.addEventListener('click', async () => {
+        btnOpenPdf.disabled = true;
+        const origText = btnOpenPdf.innerHTML;
+        btnOpenPdf.textContent = 'Loading PDF...';
+        try {
+          const blobUrl = await getDriveFileBlobUrl(item.file_id);
+          if (blobUrl) {
+            window.open(blobUrl, '_blank');
+          } else {
+            showToast('Failed to open PDF.');
+          }
+        } catch (e) {
+          console.error(e);
+          showToast('Failed to load PDF.');
+        } finally {
+          btnOpenPdf.disabled = false;
+          btnOpenPdf.innerHTML = origText;
+        }
+      });
+    }
+  }
   else { // note
     contentContainer.innerHTML = `
       <div class="detail-content">
@@ -2986,6 +3257,19 @@ function enterEditMode() {
       </div>
     `;
   }
+  else if (item.type === 'image' || item.type === 'pdf') {
+    const typeLabel = item.type === 'image' ? 'Image' : 'PDF';
+    contentContainer.innerHTML = `
+      <div class="detail-content">
+        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">${typeLabel} Title</label>
+        <input type="text" id="edit-detail-title" class="edit-input" style="inline-size: 100%; font-size: 1.5rem; font-weight: 700; margin-block-end: 16px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 10px; border-radius: 8px; box-sizing: border-box;" value="${item.title.replace(/"/g, '&quot;')}" />
+        
+        <label class="detail-summary-title" style="display: block; margin-block-end: 8px;">Personal Notes / Description</label>
+        <textarea id="edit-detail-content" class="edit-textarea" style="inline-size: 100%; block-size: 250px; font-family: inherit; font-size: 1rem; line-height: 1.5; background: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); color: #fff; padding: 12px; border-radius: 8px; resize: vertical; box-sizing: border-box; white-space: pre-wrap;">${item.content.raw_text || ''}</textarea>
+        ${getColorPickerHtml(item.color || 'default')}
+      </div>
+    `;
+  }
   else { // note
     contentContainer.innerHTML = `
       <div class="detail-content">
@@ -3093,7 +3377,7 @@ async function saveDetailEdits() {
   }
 
   let aiParsed = null;
-  if (item.type !== 'todo' && item.type !== 'note') {
+  if (item.type !== 'todo' && item.type !== 'note' && item.type !== 'image' && item.type !== 'pdf') {
     showToast('AI is analyzing updated changes...');
     setSyncStatus('syncing', 'AI Analyzing...');
     try {
@@ -4126,6 +4410,60 @@ function renderSpatialCanvas(items) {
         </div>
       `;
     } 
+    else if (item.type === 'image') {
+      card.innerHTML = `
+        <div class="card-image-preview-wrapper">
+          <div class="card-image-loading-placeholder">
+            <svg class="spinner-svg" viewBox="0 0 24 24" width="16" height="16" style="animation: spin 1s linear infinite;">
+              <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="32" stroke-linecap="round" />
+            </svg>
+            <span>Loading Image...</span>
+          </div>
+        </div>
+        <div class="card-article-content">
+          <div class="card-article-source" style="padding-inline-end: 28px;">📷 ${item.title}</div>
+          <div class="card-article-title" style="margin-block-start: 4px;">${item.ai_analysis.summary}</div>
+          <div class="card-meta">
+            <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
+          </div>
+        </div>
+      `;
+      
+      if (item.file_id) {
+        getDriveFileBlobUrl(item.file_id).then(blobUrl => {
+          const wrapper = card.querySelector('.card-image-preview-wrapper');
+          if (wrapper) {
+            if (blobUrl) {
+              wrapper.innerHTML = `<img class="card-grid-image" src="${blobUrl}" alt="${item.title}" style="width: 100%; display: block; object-fit: cover; max-height: 220px;" />`;
+            } else {
+              wrapper.innerHTML = `<div class="card-image-error" style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 0.85rem;">Failed to load image</div>`;
+            }
+          }
+        });
+      }
+    }
+    else if (item.type === 'pdf') {
+      card.innerHTML = `
+        <div class="card-pdf-wrapper" style="padding: 16px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border-glass); background: rgba(239, 68, 68, 0.05);">
+          <div class="card-pdf-icon" style="color: #ef4444; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+            <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+          </div>
+          <div style="overflow: hidden;">
+            <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${item.title}</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-block-start: 2px;">PDF Document • ${formatBytes(item.file_size)}</div>
+          </div>
+        </div>
+        <div class="card-article-content">
+          <div class="card-article-title">${item.ai_analysis.summary}</div>
+          <div class="card-meta">
+            <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
+          </div>
+        </div>
+      `;
+    }
     else { // note
       card.innerHTML = `
         <div class="card-note-title" style="padding-inline-end: 28px;">${item.title}</div>
@@ -4955,6 +5293,22 @@ async function indexItemForRAG(item) {
       }
     }
     textToEmbed = `Title: ${item.title || 'Untitled Article'}\nURL: ${item.url}\n\n${fullText}`;
+  } else if (item.type === 'image' || item.type === 'pdf') {
+    let contentText = `Type: ${item.type}\n`;
+    if (item.ai_analysis) {
+      if (item.ai_analysis.summary) contentText += `Summary: ${item.ai_analysis.summary}\n`;
+      if (item.ai_analysis.detailed_summary) contentText += `Details: ${item.ai_analysis.detailed_summary}\n`;
+      if (item.ai_analysis.key_takeaways && item.ai_analysis.key_takeaways.length > 0) {
+        contentText += `Key Takeaways:\n${item.ai_analysis.key_takeaways.map(t => `- ${t}`).join('\n')}\n`;
+      }
+      if (item.ai_analysis.tags && item.ai_analysis.tags.length > 0) {
+        contentText += `Tags: ${item.ai_analysis.tags.join(', ')}\n`;
+      }
+    }
+    if (item.content.raw_text) {
+      contentText += `User Notes: ${item.content.raw_text}\n`;
+    }
+    textToEmbed = `Title: ${item.title || 'Untitled File'}\n${contentText}`;
   } else {
     let contentText = item.content.raw_text || '';
     if (item.type === 'todo' && item.content.todos) {
@@ -5293,6 +5647,445 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initApp);
 } else {
   initApp();
+}
+
+// --- File Upload / Attachment Utility Functions ---
+
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => {
+      const base64Data = reader.result.split(',')[1];
+      resolve(base64Data);
+    };
+    reader.onerror = error => reject(error);
+  });
+}
+
+async function getDriveFileBlobUrl(fileId) {
+  if (!fileId) return '';
+  if (fileBlobUrlCache[fileId]) {
+    return fileBlobUrlCache[fileId];
+  }
+  try {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    fileBlobUrlCache[fileId] = blobUrl;
+    return blobUrl;
+  } catch (e) {
+    console.error('Failed to fetch file blob from Drive:', e);
+    return '';
+  }
+}
+
+async function uploadBinaryToDrive(file) {
+  const metadata = {
+    name: file.name,
+    mimeType: file.type,
+    parents: ['appDataFolder']
+  };
+  
+  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(metadata)
+  });
+  
+  if (!createRes.ok) {
+    throw new Error(`Failed to create file metadata on Google Drive: ${createRes.status}`);
+  }
+  const driveFile = await createRes.json();
+  const fileId = driveFile.id;
+  
+  const uploadRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': file.type
+    },
+    body: file
+  });
+  
+  if (!uploadRes.ok) {
+    throw new Error(`Failed to upload file content to Google Drive: ${uploadRes.status}`);
+  }
+  
+  return fileId;
+}
+
+async function analyzeFileWithAI(file, description = '') {
+  let apiKey = safeStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '';
+  const email = userEmail || safeStorage.getItem('mymind_user_email');
+  const isChakshu = email === 'chakshu.grover8@gmail.com';
+
+  if (!apiKey && !isChakshu) {
+    return mockFileAnalysis(file, description);
+  }
+
+  const isImage = file.type.startsWith('image/');
+  const fileTypeLabel = isImage ? 'image' : 'PDF document';
+  const model = 'gemini-3.1-flash-lite';
+
+  const systemInstruction = `
+    You are a premium, highly smart AI engine running inside the "MyMindSpace" personal knowledge-base app.
+    Analyze the attached ${fileTypeLabel} along with the user's description.
+    
+    If the file is an image, describe the image, extract any visible text, and analyze its visual content/vibe.
+    If the file is a PDF, summarize the contents of the document, extract key takeaways, and describe what the document is about.
+    
+    CRITICAL: Keep your internal thinking/reasoning process extremely brief (limit to at most 1-2 sentences) to ensure ultra-fast generation.
+
+    Respond STRICTLY in a JSON object with the following fields:
+    {
+      "title": "A short, conceptual, beautiful title for the card (e.g. 'Receipt from Starbucks', 'Lecture Notes on Chemistry')",
+      "ai_analysis": {
+        "summary": "A concise 1-2 sentence overview/abstract of the file's contents.",
+        "detailed_summary": "A detailed, comprehensive summary paragraph (3-6 sentences) highlighting the core concepts, key details, and main context of the file.",
+        "tags": ["8 to 15 relevant tags representing categories, topics, entities, or related concepts to index this item for semantic search. Do not use hashtags, just simple lowercase words"],
+        "vibe": "1-3 descriptive words of the aesthetic/feeling (e.g., 'professional, clean', 'artistic, vibrant')",
+        "key_takeaways": ["1-3 bulleted key takeaways, action items, or points extracted from the file."]
+      }
+    }
+  `;
+
+  try {
+    const base64Data = await fileToBase64(file);
+    const endpoint = `/api/gemini?model=${model}&key=${apiKey}`;
+    const payload = {
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: file.type,
+                data: base64Data
+              }
+            },
+            {
+              text: `${systemInstruction}\n\nUser's Description/Notes: ${description || 'None'}`
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        responseMimeType: 'application/json'
+      }
+    };
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) throw new Error('AI Studio file analysis request failed');
+    
+    const responseData = await response.json();
+    const parts = responseData.candidates?.[0]?.content?.parts || [];
+    const textPart = parts.find(p => !p.thought) || parts[0] || { text: '' };
+    
+    let text = textPart.text || '';
+    text = text.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+    
+    const result = JSON.parse(text);
+    return result;
+  } catch (err) {
+    console.error('File AI analysis failed:', err);
+    return mockFileAnalysis(file, description);
+  }
+}
+
+function mockFileAnalysis(file, description = '') {
+  const isImage = file.type.startsWith('image/');
+  const displayName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+  
+  return {
+    title: displayName,
+    ai_analysis: {
+      summary: `Uploaded ${isImage ? 'image' : 'PDF'}: ${file.name}. ${description ? `Notes: ${description}` : ''}`,
+      detailed_summary: `This is a locally saved ${isImage ? 'image' : 'PDF'} file titled "${file.name}". It has been successfully stored in your private Google Drive appDataFolder. ${description ? `Personal notes: "${description}".` : 'No additional description was provided.'}`,
+      tags: isImage ? ['image', 'photo', 'upload', 'media'] : ['pdf', 'document', 'pdf-file', 'upload'],
+      vibe: isImage ? 'visual, clean' : 'document, structured',
+      key_takeaways: [
+        `File Name: ${file.name}`,
+        `File Type: ${file.type}`,
+        `File Size: ${(file.size / 1024).toFixed(1)} KB`
+      ]
+    }
+  };
+}
+
+async function saveNewFileItem(file, descriptionText, folderId, color, customTitle) {
+  let pendingX = undefined;
+  let pendingY = undefined;
+  if (canvasPendingCoords) {
+    pendingX = canvasPendingCoords.x;
+    pendingY = canvasPendingCoords.y;
+    canvasPendingCoords = null;
+  }
+  
+  const addInput = document.getElementById('add-input');
+  const titleInput = document.getElementById('add-title-input');
+  const todoToggle = document.getElementById('add-todo-toggle');
+  const newFolderInput = document.getElementById('add-new-folder-name');
+  
+  addInput.value = '';
+  if (titleInput) titleInput.value = '';
+  if (todoToggle) todoToggle.checked = false;
+  if (newFolderInput) newFolderInput.value = '';
+  
+  attachedFile = null;
+  const previewContainer = document.getElementById('add-file-preview-container');
+  if (previewContainer) previewContainer.style.display = 'none';
+  
+  closeModal('add-modal');
+  showToast('Uploading file to Google Drive...');
+  
+  const placeholderId = 'item-temp-' + Date.now();
+  const fileType = file.type.startsWith('image/') ? 'image' : 'pdf';
+  const placeholderItem = {
+    id: placeholderId,
+    created_at: new Date().toISOString(),
+    type: fileType,
+    title: customTitle || file.name.substring(0, file.name.lastIndexOf('.')) || file.name,
+    folders: folderId ? [folderId] : [],
+    color: color,
+    pinned: false,
+    isPlaceholder: true,
+    content: { raw_text: descriptionText }
+  };
+  
+  driveFiles.unshift(placeholderItem);
+  renderGrid();
+  
+  try {
+    setSyncStatus('syncing', 'Uploading binary file...');
+    const binaryFileId = await uploadBinaryToDrive(file);
+    
+    setSyncStatus('syncing', 'Analyzing file with AI...');
+    const aiParsed = await analyzeFileWithAI(file, descriptionText);
+    
+    const newItem = {
+      id: 'item-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+      created_at: new Date().toISOString(),
+      type: fileType,
+      title: customTitle || aiParsed.title || file.name.substring(0, file.name.lastIndexOf('.')) || file.name,
+      folders: folderId ? [folderId] : [],
+      color: color,
+      pinned: false,
+      canvas_x: pendingX,
+      canvas_y: pendingY,
+      file_id: binaryFileId,
+      mime_type: file.type,
+      file_size: file.size,
+      ai_analysis: aiParsed.ai_analysis || {
+        summary: fileType === 'image' ? 'Saved Image' : 'Saved PDF Document',
+        tags: fileType === 'image' ? ['image', 'upload'] : ['pdf', 'document', 'upload'],
+        vibe: 'clean',
+        key_takeaways: []
+      },
+      content: {
+        raw_text: descriptionText || (aiParsed.ai_analysis && aiParsed.ai_analysis.summary) || '',
+        word_count: descriptionText ? descriptionText.split(/\s+/).length : 0,
+        reading_time_mins: 1
+      }
+    };
+    
+    setSyncStatus('syncing', 'Saving file metadata...');
+    
+    const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: `${newItem.id}.json`,
+        mimeType: 'application/json',
+        parents: ['appDataFolder']
+      })
+    });
+    
+    if (!createRes.ok) {
+      throw new Error(`Failed to create metadata file on Google Drive: ${createRes.status}`);
+    }
+    const driveFile = await createRes.json();
+    newItem._drive_file_id = driveFile.id;
+    newItem._is_newly_saved = true;
+    
+    await uploadFileContent(driveFile.id, newItem);
+    
+    const index = driveFiles.findIndex(item => item.id === placeholderId);
+    if (index !== -1) {
+      driveFiles[index] = newItem;
+    } else {
+      driveFiles.unshift(newItem);
+    }
+    saveFilesCache();
+    
+    showToast('Saved file to your Mind!');
+    setSyncStatus('synced', 'Synced');
+    
+    renderGrid();
+    renderSidebarFolders();
+  } catch (err) {
+    console.error('File background save failed:', err);
+    showToast('File upload failed.');
+    driveFiles = driveFiles.filter(item => item.id !== placeholderId);
+    renderGrid();
+    setSyncStatus('synced', 'Sync Failed');
+  }
+}
+
+function handleAttachedFile(file) {
+  if (!file) return;
+  if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+    showToast('Only images and PDF files are supported.');
+    return;
+  }
+  
+  attachedFile = file;
+  activeAddType = 'file';
+  
+  const addModalTitle = document.getElementById('add-modal-title');
+  const addInput = document.getElementById('add-input');
+  const titleInput = document.getElementById('add-title-input');
+  const previewContainer = document.getElementById('add-file-preview-container');
+  const previewName = document.getElementById('add-file-name');
+  const previewSize = document.getElementById('add-file-size');
+  const previewThumbnail = document.getElementById('add-file-thumbnail');
+  
+  if (addModalTitle) addModalTitle.textContent = file.type.startsWith('image/') ? 'Add Image' : 'Add PDF';
+  if (titleInput) {
+    titleInput.style.display = 'block';
+    const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+    titleInput.value = nameWithoutExt;
+    titleInput.placeholder = 'File Title...';
+  }
+  
+  if (addInput) {
+    addInput.placeholder = 'Add optional notes or description for this file...';
+  }
+  
+  if (previewContainer) previewContainer.style.display = 'flex';
+  if (previewName) previewName.textContent = file.name;
+  if (previewSize) previewSize.textContent = `${(file.size / 1024).toFixed(1)} KB`;
+  
+  if (previewThumbnail) {
+    previewThumbnail.innerHTML = '';
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        previewThumbnail.innerHTML = `<img src="${e.target.result}" style="width: 100%; height: 100%; object-fit: cover;" />`;
+      };
+      reader.readAsDataURL(file);
+    } else {
+      previewThumbnail.innerHTML = `
+        <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#ef4444" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <text x="6" y="17" fill="#ef4444" font-size="5px" font-weight="bold" font-family="sans-serif">PDF</text>
+        </svg>
+      `;
+    }
+  }
+  
+  const modal = document.getElementById('add-modal');
+  if (modal.classList.contains('hidden') || modal.hasAttribute('hidden') || window.getComputedStyle(modal).display === 'none') {
+    openModal('add-modal');
+  }
+}
+
+function removeAttachedFile() {
+  attachedFile = null;
+  const previewContainer = document.getElementById('add-file-preview-container');
+  if (previewContainer) previewContainer.style.display = 'none';
+  
+  const addModalTitle = document.getElementById('add-modal-title');
+  const addInput = document.getElementById('add-input');
+  
+  activeAddType = 'general';
+  if (addModalTitle) addModalTitle.textContent = 'Remember Something';
+  if (addInput) addInput.placeholder = 'Paste a link, write a note, or write a checklist...';
+  
+  const titleInput = document.getElementById('add-title-input');
+  if (titleInput) {
+    titleInput.value = '';
+    titleInput.style.display = 'none';
+  }
+}
+
+function initDragAndDrop() {
+  const overlay = document.getElementById('drag-drop-overlay');
+  if (!overlay) return;
+  
+  let dragCounter = 0;
+  
+  window.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragCounter++;
+    if (dragCounter === 1) {
+      overlay.removeAttribute('hidden');
+      setTimeout(() => overlay.classList.add('active'), 10);
+    }
+  });
+  
+  window.addEventListener('dragover', (e) => {
+    e.preventDefault();
+  });
+  
+  window.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter === 0) {
+      overlay.classList.remove('active');
+      setTimeout(() => {
+        if (!overlay.classList.contains('active')) {
+          overlay.setAttribute('hidden', 'true');
+        }
+      }, 250);
+    }
+  });
+  
+  window.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    overlay.classList.remove('active');
+    overlay.setAttribute('hidden', 'true');
+    
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      handleAttachedFile(file);
+    }
+  });
+}
+
+function initPasteHandler() {
+  window.addEventListener('paste', (e) => {
+    if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
+      const file = e.clipboardData.files[0];
+      handleAttachedFile(file);
+    }
+  });
 }
 
 

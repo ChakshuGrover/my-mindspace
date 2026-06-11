@@ -533,6 +533,7 @@ class MindProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(b'{"success": true}')
             
         elif self.path.startswith('/api/gemini'):
+            import urllib.request
             parsed_url = urlparse(self.path)
             params = parse_qs(parsed_url.query)
             
@@ -553,7 +554,10 @@ class MindProxyHandler(http.server.SimpleHTTPRequestHandler):
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             
-            google_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            action = "generateContent"
+            if "embedding" in model:
+                action = "embedContent"
+            google_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:{action}?key={api_key}"
             
             req = urllib.request.Request(
                 google_url,

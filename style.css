@@ -2815,4 +2815,131 @@ label {
   border-color: var(--accent-purple, #a855f7);
 }
 
+/* --- Image and PDF Card Styles --- */
+.mind-card--image {
+  padding: 0 !important;
+}
+
+.mind-card--pdf {
+  padding: 0 !important;
+}
+
+.card-image-preview-wrapper {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-bottom: 1px solid var(--border-glass, rgba(255, 255, 255, 0.1));
+  background: var(--bg-glass-active, rgba(255, 255, 255, 0.05));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.card-image-loading-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.card-grid-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform var(--transition-fast, 0.2s);
+}
+
+.mind-card--image:hover .card-grid-image {
+  transform: scale(1.03);
+}
+
+/* Drag & Drop Overlay */
+.drag-drop-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 99999;
+  background: rgba(13, 15, 18, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.drag-drop-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.drag-drop-box {
+  background: var(--bg-glass-active, rgba(255, 255, 255, 0.05));
+  border: 2px dashed var(--accent-purple, #a855f7);
+  padding: 48px;
+  border-radius: var(--radius-lg, 16px);
+  text-align: center;
+  box-shadow: var(--shadow-lg);
+  transform: scale(0.9);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  max-width: 400px;
+  width: 90%;
+  pointer-events: none;
+}
+
+.drag-drop-overlay.active .drag-drop-box {
+  transform: scale(1);
+}
+
+.drag-drop-icon {
+  font-size: 3rem;
+  margin-bottom: 16px;
+  animation: dragPulse 2s infinite;
+}
+
+.drag-drop-box h3 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #fff;
+  font-family: var(--font-sans, sans-serif);
+}
+
+.drag-drop-box p {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  font-family: var(--font-sans, sans-serif);
+}
+
+@keyframes dragPulse {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+/* Stagger delay for 4th speed dial child */
+.floating-add-container.open .sub-add-buttons .sub-add-btn:nth-child(4) {
+  transition-delay: 0.18s;
+}
+
+/* Remove button style in modal preview */
+#btn-remove-attached-file {
+  transition: color var(--transition-fast);
+}
+
+#btn-remove-attached-file:hover {
+  color: #ef4444 !important;
+}
+
 
