@@ -5143,11 +5143,12 @@ async function handleChatSubmit(e) {
     }
     console.log('[Chat debug] topChunks selected:', topChunks.length, topChunks);
     
-    if (topChunks.length === 0) {
-      console.log('[Chat debug] No matching context found.');
+    const catalogItems = driveFiles.filter(item => !item.isPlaceholder && item.type !== 'color');
+    if (catalogItems.length === 0) {
+      console.log('[Chat debug] No saved items in catalog.');
       if (aiMessageEl) {
         aiMessageEl.classList.remove('loading');
-        aiMessageEl.textContent = 'I cannot find any relevant information in your saved items. Try adding some articles or notes first!';
+        aiMessageEl.textContent = 'Your mindspace is currently empty. Try saving some notes, links, or checklists first!';
       }
       return;
     }
@@ -5167,20 +5168,33 @@ async function handleChatSubmit(e) {
     let apiKey = safeStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '';
     console.log('[Chat debug] Using API Key:', apiKey ? 'YES (length: ' + apiKey.length + ')' : 'NO (empty)');
     
-    const prompt = `You are a personal assistant for the user's private mindspace. Answer the user's question based ONLY on the provided context of their saved links, notes, and checklist items.
-    
-    CRITICAL RULES:
-    1. Answer the question accurately using ONLY the context provided.
-    2. If the answer cannot be determined from the context, politely say: "I couldn't find the answer in your saved items." Do not use external knowledge or make up facts.
-    3. Be concise and friendly. Format key terms in bold.
-    4. Reference the source names or URLs when sharing info (e.g. "According to your saved article [Title]...").
-    
-    Context:
-    ---
-    ${contextText}
-    ---
-    
-    Question: ${query}`;
+    const catalogText = catalogItems.map(item => {
+      const tagsStr = item.ai_analysis?.tags ? item.ai_analysis.tags.join(', ') : '';
+      const dateStr = item.created_at ? formatLocalISO(item.created_at).split('T')[0] : 'Unknown date';
+      return `- Title: "${item.title || 'Untitled'}" | Type: ${item.type || 'note'} | Saved: ${dateStr}${tagsStr ? ' | Tags: ' + tagsStr : ''}`;
+    }).join('\n');
+
+    const prompt = `You are a personal assistant for the user's private mindspace. You have access to the following two sources of context from the user's mindspace:
+
+1. SAVED ITEMS CATALOG (Metadata list of all saved items, including titles, types, creation dates, and tags):
+Today's local date and time: ${formatLocalISO(new Date())}
+---
+${catalogText}
+---
+
+2. DETAILED CONTENT CONTEXT (Detailed text chunks retrieved via similarity search for this query):
+---
+${contextText || '(No detailed content chunks matched this query)'}
+---
+
+CRITICAL INSTRUCTIONS:
+1. If the user asks a question about what they saved, when they saved it, how many items they have, or seeks to locate/list items by title, date, type, or tag (catalog/metadata queries), use the "SAVED ITEMS CATALOG" to answer.
+2. If the user asks a question about the detailed contents, information, or code inside their notes or articles (content/deep queries), use the "DETAILED CONTENT CONTEXT" to answer.
+3. Answer the question accurately using ONLY the provided contexts. Do not use external facts or assumptions.
+4. If the answer cannot be determined from either context, politely say: "I couldn't find the answer in your saved items."
+5. Be concise and friendly. Format key terms in bold. Reference item names, dates, or source URLs when sharing information.
+
+Question: ${query}`;
 
     const modelName = 'gemini-3.1-flash-lite';
     let timeoutId;
