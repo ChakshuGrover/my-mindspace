@@ -4829,24 +4829,51 @@ function chunkText(text, maxChunkSize = 900, overlap = 150) {
 // --- 3. Embedding Vector API Call ---
 async function getEmbedding(text) {
   let apiKey = safeStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '';
-  const response = await fetch(`/api/gemini?model=gemini-embedding-2&key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      content: {
-        parts: [{ text: text }]
+  try {
+    const response = await fetch(`/api/gemini?model=gemini-embedding-2&key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: {
+          parts: [{ text: text }]
+        }
+      })
+    });
+    if (!response.ok) {
+      throw new Error(`Primary embedding request failed: ${response.statusText}`);
+    }
+    const data = await response.json();
+    const vector = data.embedding?.values;
+    if (!vector || !Array.isArray(vector)) {
+      throw new Error('Malformed embedding response from primary model');
+    }
+    return vector;
+  } catch (err) {
+    console.warn('Primary embedding model (gemini-embedding-2) failed, attempting backup (text-embedding-004):', err);
+    try {
+      const response = await fetch(`/api/gemini?model=text-embedding-004&key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: {
+            parts: [{ text: text }]
+          }
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`Backup embedding request failed: ${response.statusText}`);
       }
-    })
-  });
-  if (!response.ok) {
-    throw new Error(`Embedding request failed: ${response.statusText}`);
+      const data = await response.json();
+      const vector = data.embedding?.values;
+      if (!vector || !Array.isArray(vector)) {
+        throw new Error('Malformed embedding response from backup model');
+      }
+      return vector;
+    } catch (fallbackErr) {
+      console.error('Both primary and backup embedding models failed:', fallbackErr);
+      throw fallbackErr;
+    }
   }
-  const data = await response.json();
-  const vector = data.embedding?.values;
-  if (!vector || !Array.isArray(vector)) {
-    throw new Error('Malformed embedding response');
-  }
-  return vector;
 }
 
 // --- 4. Cosine Similarity Vector Search ---
