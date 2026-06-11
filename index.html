@@ -57,13 +57,12 @@
         </svg>
         <span>MyMindSpace</span>
       </div>
-      <button id="btn-landing-settings" class="btn-settings-landing" title="Configure App">⚙️ Settings</button>
     </header>
     <main class="landing-main">
       <h1 class="landing-title">The private extension<br/>for your mind.</h1>
       <p class="landing-subtitle">
         A private digital canvas to save your quotes, articles, notes, and colors. 
-        Enhanced with <strong>Gemma 4 31B AI</strong> to auto-tag and summarize everything, 
+        Enhanced with <strong>AI</strong> to auto-tag and summarize everything, 
         and stored 100% privately in your own <strong>Google Drive</strong>.
       </p>
       
@@ -467,6 +466,57 @@
       <footer class="modal-footer">
         <button class="btn btn--ghost" id="btn-cancel-folder">Cancel</button>
         <button class="btn btn--primary" id="btn-save-folder">Create</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Onboarding Modal Overlay -->
+  <div id="onboarding-modal" class="modal" hidden>
+    <div class="modal-backdrop" id="onboarding-backdrop"></div>
+    <div class="modal-panel modal-panel--onboarding">
+      <header class="modal-header">
+        <h3>Welcome to MyMindSpace ✨</h3>
+      </header>
+      <div class="modal-body">
+        <div class="onboarding-intro">
+          <p>MyMindSpace runs 100% privately in your browser and syncs directly to your Google Drive. To power up your mindspace with automated AI tagging, summarization, and cognitive search, connect your personal Gemini API key.</p>
+        </div>
+        
+        <div class="onboarding-steps">
+          <div class="onboarding-step">
+            <span class="step-badge">1</span>
+            <div class="step-content">
+              <strong>Get your free API Key</strong>
+              <p>Go to <a href="https://aistudio.google.com/" target="_blank" rel="noopener" class="onboarding-link">Google AI Studio <span class="external-icon">↗</span></a> and click <strong>Create API Key</strong>.</p>
+            </div>
+          </div>
+          <div class="onboarding-step">
+            <span class="step-badge">2</span>
+            <div class="step-content">
+              <strong>Copy the Key</strong>
+              <p>Create a key (it takes 5 seconds, no credit card required) and copy it to your clipboard.</p>
+            </div>
+          </div>
+          <div class="onboarding-step">
+            <span class="step-badge">3</span>
+            <div class="step-content">
+              <strong>Paste it below</strong>
+              <p>Paste your key here to unlock full AI capabilities instantly.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="onboarding-input-section">
+          <label class="form-label">
+            <span>Gemini API Key</span>
+            <input type="password" id="onboarding-gemini-key" placeholder="Enter your Gemini API Key (starts with AIzaSy)" />
+          </label>
+          <p class="settings-hint" style="margin-block-start: 8px;">Your key is stored securely in your browser and encrypted when synced to your private Google Drive.</p>
+        </div>
+      </div>
+      <footer class="modal-footer">
+        <button class="btn btn--ghost" id="btn-skip-onboarding">Skip for Now</button>
+        <button class="btn btn--primary" id="btn-save-onboarding">Save & Enable AI</button>
       </footer>
     </div>
   </div>

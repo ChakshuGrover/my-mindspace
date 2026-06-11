@@ -2473,3 +2473,94 @@ label {
   color: #fff;
 }
 
+/* --- Onboarding Modal Styling --- */
+.modal-panel--onboarding {
+  max-inline-size: 540px;
+}
+
+.onboarding-intro {
+  margin-block-end: 24px;
+}
+
+.onboarding-intro p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.onboarding-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-block-end: 24px;
+}
+
+.onboarding-step {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  transition: transform var(--transition-fast), background var(--transition-fast);
+}
+
+.onboarding-step:hover {
+  background: var(--bg-glass-active);
+  transform: translateY(-1px);
+}
+
+.step-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  inline-size: 28px;
+  block-size: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-pink) 100%);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.3);
+}
+
+.step-content strong {
+  display: block;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.95rem;
+  color: #fff;
+  margin-block-end: 4px;
+}
+
+.step-content p {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.onboarding-link {
+  color: var(--accent-purple);
+  text-decoration: none;
+  font-weight: 600;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.onboarding-link:hover {
+  color: var(--accent-pink);
+  border-color: var(--accent-pink);
+}
+
+.external-icon {
+  font-size: 0.75rem;
+  vertical-align: middle;
+}
+
+.onboarding-input-section {
+  border-top: 1px solid var(--border-glass);
+  padding-block-start: 20px;
+}
+

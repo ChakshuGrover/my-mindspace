@@ -421,10 +421,6 @@ function setupEventListeners() {
   const btnMobileSettings = document.getElementById('btn-mobile-settings');
   if (btnMobileSettings) btnMobileSettings.addEventListener('click', openSettings);
   
-  const btnLandingSettings = document.getElementById('btn-landing-settings');
-  if (btnLandingSettings) {
-    btnLandingSettings.addEventListener('click', openSettings);
-  }
   
   const cancelSettings = () => {
     revertLiveSettings();
@@ -763,6 +759,16 @@ function setupEventListeners() {
 
   // Initialize Spatial Canvas Zoom/Pan/Link Events
   initSpatialCanvasEvents();
+
+  // Onboarding modal actions
+  const btnSkipOnboarding = document.getElementById('btn-skip-onboarding');
+  if (btnSkipOnboarding) btnSkipOnboarding.addEventListener('click', skipOnboarding);
+
+  const btnSaveOnboarding = document.getElementById('btn-save-onboarding');
+  if (btnSaveOnboarding) btnSaveOnboarding.addEventListener('click', saveOnboardingSettings);
+
+  const onboardingBackdrop = document.getElementById('onboarding-backdrop');
+  if (onboardingBackdrop) onboardingBackdrop.addEventListener('click', skipOnboarding);
 }
 
 // --- Navigation & Landing UI Switches ---
@@ -927,6 +933,8 @@ async function verifyAndFetchData() {
         loadSettingsFromDrive(),
         loadMindItems()
       ]);
+    }).then(() => {
+      checkOnboarding();
     }).catch(syncErr => {
       console.error('Initial background sync failed:', syncErr);
       setSyncStatus('synced', 'Sync Failed');
@@ -3076,6 +3084,46 @@ async function saveSettings(e) {
   } catch (err) {
     showToast('Settings saved locally. Sync failed.');
   }
+}
+
+function checkOnboarding() {
+  const geminiKey = safeStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '';
+
+  if (!geminiKey) {
+    openModal('onboarding-modal');
+  }
+}
+
+async function saveOnboardingSettings() {
+  const geminiKeyInput = document.getElementById('onboarding-gemini-key');
+  const geminiKey = geminiKeyInput ? geminiKeyInput.value.trim() : '';
+
+  if (!geminiKey) {
+    showToast('Please enter a Gemini API Key or click "Skip for Now".');
+    return;
+  }
+
+  safeStorage.setItem(STORAGE_KEYS.GEMINI_KEY, geminiKey);
+
+  // Sync to settings-modal input just in case
+  const geminiInput = document.getElementById('setting-gemini-key');
+  if (geminiInput) geminiInput.value = geminiKey;
+
+  closeModal('onboarding-modal');
+  showToast('AI Setup complete! Saving settings...');
+
+  try {
+    const opacity = sanitizeValue(safeStorage.getItem('mymind_card_opacity'), '0.50');
+    await syncSettingsToDrive(geminiKey, opacity);
+    showToast('Settings saved & synced.');
+  } catch (err) {
+    showToast('Settings saved locally. Sync failed.');
+  }
+}
+
+function skipOnboarding() {
+  closeModal('onboarding-modal');
+  showToast('Onboarding skipped. You can configure AI later in Settings (⚙️).');
 }
 
 // Simple encryption using XOR with a key derived from user ID
