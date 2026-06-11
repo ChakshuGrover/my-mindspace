@@ -33,6 +33,8 @@ let aiSearchAbortController = null;
 let currentDetailItem = null;
 let isEditingDetail = false;
 let activeAddType = 'general'; // 'general', 'note', 'todo', 'link'
+let chatFocusItem = null;
+let openChatFn = null;
 
 // --- Spatial Canvas (Mind Map) Global State ---
 let currentViewMode = 'grid'; // 'grid' or 'spatial'
@@ -115,7 +117,13 @@ function loadCachedData() {
 
 function saveFilesCache() {
   try {
-    safeStorage.setItem('mymind_cached_files', JSON.stringify(driveFiles));
+    // Strip heavy RAG chunks from local storage cache to stay well under the 5MB localStorage limit
+    const lightFiles = driveFiles.map(item => {
+      const copy = { ...item };
+      delete copy.rag_chunks;
+      return copy;
+    });
+    safeStorage.setItem('mymind_cached_files', JSON.stringify(lightFiles));
   } catch (e) {
     console.error('Failed to save files cache:', e);
   }
@@ -129,14 +137,12 @@ function saveFoldersCache() {
   }
 }
 
-// --- Initializing UI Elements ---
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initApp);
-} else {
-  initApp();
-}
+
 
 function initApp() {
+  // Initialize IndexedDB database for RAG search
+  MindDB.init().catch(err => console.error('Failed to init MindDB:', err));
+
   // Capture pending share parameters immediately on startup
   let addUrl = null;
   const search = window.location.search;
@@ -428,6 +434,111 @@ function setupEventListeners() {
   };
   const btnCloseSettings = document.getElementById('btn-close-settings');
   if (btnCloseSettings) btnCloseSettings.addEventListener('click', cancelSettings);
+
+  // Chat Modal open/close and form submission
+  const openChat = (item = null) => {
+    chatFocusItem = (item && item.id) ? item : null;
+    
+    // Update the Chat Title / Scope badge in the UI
+    const chatHeaderTitle = document.querySelector('#chat-modal .modal-header h3');
+    const existingBadge = document.getElementById('chat-scope-badge');
+    if (existingBadge) existingBadge.remove();
+    
+    const chatScopeArea = document.getElementById('chat-scope-area');
+    const selector = document.getElementById('chat-card-selector');
+
+    if (chatFocusItem) {
+      chatHeaderTitle.textContent = 'Chatting with Card';
+      
+      const badge = document.createElement('div');
+      badge.id = 'chat-scope-badge';
+      badge.className = 'chat-scope-badge';
+      badge.innerHTML = `
+        <span>Focus: <strong>${chatFocusItem.title || 'Untitled Note'}</strong></span>
+        <button id="btn-clear-chat-scope" class="btn-clear-scope" title="Clear focus, chat with all items">&times;</button>
+      `;
+      
+      // Insert badge under the header
+      const header = document.querySelector('#chat-modal .modal-header');
+      if (header) {
+        header.parentNode.insertBefore(badge, header.nextSibling);
+      }
+      
+      const btnClear = document.getElementById('btn-clear-chat-scope');
+      if (btnClear) {
+        btnClear.addEventListener('click', () => {
+          openChat(null); // Clear scope
+        });
+      }
+
+      // Hide the selector dropdown when focusing on a specific card
+      if (chatScopeArea) chatScopeArea.style.display = 'none';
+    } else {
+      chatHeaderTitle.textContent = 'Chat with your Mind';
+
+      // Show the selector dropdown when in global chat mode
+      if (chatScopeArea) chatScopeArea.style.display = 'block';
+
+      // Populate/Update the selector options
+      if (selector) {
+        // Reset the selector contents to default
+        selector.innerHTML = '<option value="">🔍 Focus on a specific card...</option>';
+
+        // Filter for active, non-placeholder, non-color items
+        const eligibleItems = driveFiles.filter(i => !i.isPlaceholder && i.type !== 'color');
+        
+        // Sort alphabetically
+        eligibleItems.sort((a, b) => {
+          const titleA = (a.title || 'Untitled Note').toLowerCase();
+          const titleB = (b.title || 'Untitled Note').toLowerCase();
+          return titleA.localeCompare(titleB);
+        });
+
+        eligibleItems.forEach(i => {
+          const opt = document.createElement('option');
+          opt.value = i.id;
+          
+          let typeLabel = i.type || 'note';
+          if (typeLabel === 'list') typeLabel = 'checklist';
+          
+          opt.textContent = `${i.title || 'Untitled Note'} [${typeLabel.toUpperCase()}]`;
+          selector.appendChild(opt);
+        });
+
+        // Set value to empty
+        selector.value = "";
+      }
+    }
+
+    openModal('chat-modal');
+    closeMobileSidebar();
+    setTimeout(() => {
+      document.getElementById('chat-input')?.focus();
+    }, 100);
+  };
+  openChatFn = openChat;
+  
+  const btnChat = document.getElementById('btn-chat');
+  if (btnChat) btnChat.addEventListener('click', () => openChat(null));
+  const btnMobileChat = document.getElementById('btn-mobile-chat');
+  if (btnMobileChat) btnMobileChat.addEventListener('click', () => openChat(null));
+  const btnCloseChat = document.getElementById('btn-close-chat-modal');
+  if (btnCloseChat) btnCloseChat.addEventListener('click', () => closeModal('chat-modal'));
+  const chatBackdrop = document.getElementById('chat-modal-backdrop');
+  if (chatBackdrop) chatBackdrop.addEventListener('click', () => closeModal('chat-modal'));
+  const chatForm = document.getElementById('chat-form');
+  if (chatForm) chatForm.addEventListener('submit', handleChatSubmit);
+
+  const chatCardSelector = document.getElementById('chat-card-selector');
+  if (chatCardSelector) {
+    chatCardSelector.addEventListener('change', (e) => {
+      const selectedId = e.target.value;
+      if (selectedId) {
+        const item = driveFiles.find(f => f.id === selectedId);
+        if (item) openChat(item);
+      }
+    });
+  }
   
   const btnCloseSettingsModal = document.getElementById('btn-close-settings-modal');
   if (btnCloseSettingsModal) btnCloseSettingsModal.addEventListener('click', cancelSettings);
@@ -735,6 +846,11 @@ function setupEventListeners() {
     item.addEventListener('click', (e) => {
       const targetId = e.currentTarget.id;
       
+      if (targetId === 'btn-chat') {
+        closeMobileSidebar();
+        return;
+      }
+      
       if (targetId === 'nav-view-spatial') {
         currentViewMode = 'spatial';
         currentFilter = 'all';
@@ -1010,8 +1126,9 @@ async function loadFolders() {
       saveFoldersCache();
       renderSidebarFolders();
     }
-    
+    renderGrid();
     renderSidebarFolders();
+    runBackgroundEmbeddingIndexing();
   } catch (err) {
     console.error('Failed to load/create folders.json:', err);
     throw err;
@@ -1064,7 +1181,11 @@ async function loadMindItems() {
           if (!contentRes.ok) {
             throw new Error(`Failed to get file content: ${contentRes.status}`);
           }
-          const item = await contentRes.json();
+          const textData = await contentRes.text();
+          if (!textData.trim()) {
+            throw new SyntaxError('Empty response');
+          }
+          const item = JSON.parse(textData);
           item._drive_file_id = file.id;
           item._drive_modified_time = file.modifiedTime;
           if (item.type === 'color' || item.type === 'quote') {
@@ -1073,7 +1194,16 @@ async function loadMindItems() {
           return sanitizeMindItem(item);
         } catch (e) {
           console.error(`Error loading file content for ${file.name}:`, e);
-          // If fetch fails but we have a cached copy, keep the cached copy as fallback
+          
+          // Auto-cleanup: If the file was successfully downloaded but is corrupt/empty, delete it from Google Drive
+          if (e instanceof SyntaxError) {
+            console.warn(`Auto-deleting corrupt/empty file from Google Drive: ${file.name} (ID: ${file.id})`);
+            fetch(`https://www.googleapis.com/drive/v3/files/${file.id}`, {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${accessToken}` }
+            }).catch(delErr => console.error('Failed to auto-delete corrupt file:', delErr));
+          }
+          
           return cached || null;
         }
       });
@@ -1097,6 +1227,7 @@ async function loadMindItems() {
       
       // Trigger background metadata enrichment (detailed summaries and increased tags)
       runBackgroundMetadataEnrichment();
+      runBackgroundEmbeddingIndexing();
     } else {
       driveFiles = [];
       saveFilesCache();
@@ -2181,6 +2312,9 @@ async function deleteItem(itemId, driveFileId) {
       driveFiles = driveFiles.filter(item => item.id !== itemId);
       saveFilesCache();
       
+      // Clean up local RAG chunks in IndexedDB
+      MindDB.deleteChunks(itemId).catch(e => console.error('Failed to delete chunks on item deletion:', e));
+      
       showToast('Forgotten.');
       setSyncStatus('synced', 'Synced');
       renderGrid();
@@ -2495,6 +2629,24 @@ function showDetailModal(item) {
       newBtnPin.className = `btn-detail-action ${item.pinned ? 'is-pinned' : ''}`;
       newBtnPin.title = item.pinned ? 'Unpin note' : 'Pin note';
     });
+  }
+
+  // Handle Chat button binding
+  const btnChatItem = document.getElementById('btn-chat-item');
+  if (btnChatItem) {
+    if (item.type === 'color') {
+      btnChatItem.style.display = 'none';
+    } else {
+      btnChatItem.style.display = 'inline-flex';
+      const newBtnChatItem = btnChatItem.cloneNode(true);
+      btnChatItem.parentNode.replaceChild(newBtnChatItem, btnChatItem);
+      newBtnChatItem.addEventListener('click', () => {
+        closeModal('detail-modal');
+        if (typeof openChatFn === 'function') {
+          openChatFn(item);
+        }
+      });
+    }
   }
 
   // Handle Edit button binding
@@ -3014,7 +3166,14 @@ async function saveDetailEdits() {
     if (idx !== -1) {
       driveFiles[idx] = item;
     }
+    
+    // Clear old chunks to trigger re-indexing
+    delete item.rag_chunks;
     saveFilesCache();
+    
+    MindDB.deleteChunks(item.id).then(() => {
+      runBackgroundEmbeddingIndexing();
+    }).catch(e => console.error('Failed to delete old chunks on edit:', e));
 
     setSyncStatus('synced', 'Synced');
     showToast('Changes saved!');
@@ -3081,6 +3240,7 @@ async function saveSettings(e) {
   try {
     await syncSettingsToDrive(geminiKey, opacity);
     showToast('Settings saved & synced.');
+    runBackgroundEmbeddingIndexing();
   } catch (err) {
     showToast('Settings saved locally. Sync failed.');
   }
@@ -3116,6 +3276,7 @@ async function saveOnboardingSettings() {
     const opacity = sanitizeValue(safeStorage.getItem('mymind_card_opacity'), '0.50');
     await syncSettingsToDrive(geminiKey, opacity);
     showToast('Settings saved & synced.');
+    runBackgroundEmbeddingIndexing();
   } catch (err) {
     showToast('Settings saved locally. Sync failed.');
   }
@@ -4497,6 +4658,600 @@ function updateCanvasViewModeButton() {
     btnViewMode.textContent = '🕸️';
     btnViewMode.title = 'Switch to Graph View';
   }
+}
+
+// ============================================================================
+// ==================== RAG CHAT & VECTOR SEARCH MODULE =======================
+// ============================================================================
+
+// --- 1. IndexedDB Database Wrapper ---
+const MindDB = {
+  dbName: 'mymind_rag_db',
+  dbVersion: 1,
+  db: null,
+
+  init() {
+    return new Promise((resolve, reject) => {
+      if (this.db) {
+        resolve(this.db);
+        return;
+      }
+      const request = indexedDB.open(this.dbName, this.dbVersion);
+      request.onerror = (e) => {
+        console.error('IndexedDB open error:', e);
+        reject(e);
+      };
+      request.onsuccess = (e) => {
+        this.db = e.target.result;
+        resolve(this.db);
+      };
+      request.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('chunks')) {
+          const chunkStore = db.createObjectStore('chunks', { keyPath: 'id' });
+          chunkStore.createIndex('itemId', 'itemId', { unique: false });
+        }
+      };
+    });
+  },
+
+  saveChunks(itemId, chunks) {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+      const transaction = this.db.transaction(['chunks'], 'readwrite');
+      const store = transaction.objectStore('chunks');
+      
+      const index = store.index('itemId');
+      const request = index.openCursor(IDBKeyRange.only(itemId));
+      
+      request.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          store.delete(cursor.primaryKey);
+          cursor.continue();
+        } else {
+          if (chunks.length === 0) {
+            resolve();
+            return;
+          }
+          let count = 0;
+          chunks.forEach(chunk => {
+            const putReq = store.put(chunk);
+            putReq.onerror = (err) => reject(err);
+            putReq.onsuccess = () => {
+              count++;
+              if (count === chunks.length) {
+                resolve();
+              }
+            };
+          });
+        }
+      };
+      request.onerror = (err) => reject(err);
+    });
+  },
+
+  deleteChunks(itemId) {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+      const transaction = this.db.transaction(['chunks'], 'readwrite');
+      const store = transaction.objectStore('chunks');
+      const index = store.index('itemId');
+      const request = index.openCursor(IDBKeyRange.only(itemId));
+      
+      request.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          store.delete(cursor.primaryKey);
+          cursor.continue();
+        } else {
+          resolve();
+        }
+      };
+      request.onerror = (err) => reject(err);
+    });
+  },
+
+  getAllChunks() {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
+      const transaction = this.db.transaction(['chunks'], 'readonly');
+      const store = transaction.objectStore('chunks');
+      const request = store.getAll();
+      request.onsuccess = (e) => resolve(e.target.result);
+      request.onerror = (e) => reject(e);
+    });
+  }
+};
+
+// --- 2. Recursive Chunker ---
+function chunkText(text, maxChunkSize = 900, overlap = 150) {
+  if (!text) return [];
+  const chunks = [];
+  
+  const paragraphs = text.split(/\n\n+/);
+  let currentChunk = '';
+  
+  for (const para of paragraphs) {
+    const p = para.trim();
+    if (!p) continue;
+    
+    if (p.length > maxChunkSize) {
+      if (currentChunk) {
+        chunks.push(currentChunk.trim());
+        currentChunk = '';
+      }
+      
+      const sentences = p.match(/[^.!?]+[.!?]+/g) || [p];
+      for (const sent of sentences) {
+        const s = sent.trim();
+        if (!s) continue;
+        
+        if (s.length > maxChunkSize) {
+          let startPos = 0;
+          while (startPos < s.length) {
+            chunks.push(s.substring(startPos, startPos + maxChunkSize));
+            startPos += (maxChunkSize - overlap);
+          }
+        } else if ((currentChunk + ' ' + s).length > maxChunkSize) {
+          chunks.push(currentChunk.trim());
+          const lastWords = currentChunk.substring(Math.max(0, currentChunk.length - overlap));
+          currentChunk = lastWords + ' ' + s;
+        } else {
+          currentChunk = currentChunk ? (currentChunk + ' ' + s) : s;
+        }
+      }
+    } else if ((currentChunk + '\n\n' + p).length > maxChunkSize) {
+      chunks.push(currentChunk.trim());
+      const lastChars = currentChunk.substring(Math.max(0, currentChunk.length - overlap));
+      currentChunk = lastChars + '\n\n' + p;
+    } else {
+      currentChunk = currentChunk ? (currentChunk + '\n\n' + p) : p;
+    }
+  }
+  
+  if (currentChunk) {
+    chunks.push(currentChunk.trim());
+  }
+  
+  return chunks;
+}
+
+// --- 3. Embedding Vector API Call ---
+async function getEmbedding(text) {
+  let apiKey = safeStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '';
+  const response = await fetch(`/api/gemini?model=gemini-embedding-2&key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      content: {
+        parts: [{ text: text }]
+      }
+    })
+  });
+  if (!response.ok) {
+    throw new Error(`Embedding request failed: ${response.statusText}`);
+  }
+  const data = await response.json();
+  const vector = data.embedding?.values;
+  if (!vector || !Array.isArray(vector)) {
+    throw new Error('Malformed embedding response');
+  }
+  return vector;
+}
+
+// --- 4. Cosine Similarity Vector Search ---
+function cosineSimilarity(vecA, vecB) {
+  let dotProduct = 0.0;
+  let normA = 0.0;
+  let normB = 0.0;
+  for (let i = 0; i < vecA.length; i++) {
+    dotProduct += vecA[i] * vecB[i];
+    normA += vecA[i] * vecA[i];
+    normB += vecB[i] * vecB[i];
+  }
+  if (normA === 0 || normB === 0) return 0.0;
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+async function searchVectorChunks(queryText, topK = 5) {
+  const queryVector = await getEmbedding(queryText);
+  const allChunks = await MindDB.getAllChunks();
+  if (allChunks.length === 0) return [];
+  
+  const scoredChunks = allChunks.map(chunk => {
+    const score = cosineSimilarity(queryVector, chunk.vector);
+    return { ...chunk, score };
+  });
+  
+  scoredChunks.sort((a, b) => b.score - a.score);
+  return scoredChunks.slice(0, topK);
+}
+
+// --- 5. RAG Indexer for a Single Item ---
+async function indexItemForRAG(item) {
+  if (!item.rag_chunks || item.rag_chunks.length === 0) {
+    if (item._drive_file_id && typeof accessToken !== 'undefined' && accessToken) {
+      try {
+        console.log(`[RAG debug] Downloading full file from Drive for ${item.title || item.id} to retrieve RAG chunks...`);
+        const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${item._drive_file_id}?alt=media`, {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        if (contentRes.ok) {
+          const remoteItem = await contentRes.json();
+          if (remoteItem.rag_chunks && remoteItem.rag_chunks.length > 0) {
+            console.log(`[RAG debug] Found existing RAG chunks on Drive for ${item.title || item.id}, caching locally.`);
+            item.rag_chunks = remoteItem.rag_chunks;
+          }
+        }
+      } catch (err) {
+        console.warn(`[RAG debug] Failed to download remote item to check for chunks:`, err);
+      }
+    }
+  }
+
+  if (item.rag_chunks && item.rag_chunks.length > 0) {
+    const dbChunks = item.rag_chunks.map((c, idx) => ({
+      id: `${item.id}_${idx}`,
+      itemId: item.id,
+      text: c.text,
+      vector: c.vector
+    }));
+    await MindDB.saveChunks(item.id, dbChunks);
+    return;
+  }
+
+  let textToEmbed = '';
+  
+  if (item.type === 'article' && item.url) {
+    let fullText = item.content.full_text || '';
+    if (!fullText) {
+      try {
+        const scrapeRes = await fetch(`/api/scrape?url=${encodeURIComponent(item.url)}`);
+        if (scrapeRes.ok) {
+          const meta = await scrapeRes.json();
+          fullText = meta.fullText || meta.description || '';
+          item.content.full_text = fullText;
+        }
+      } catch (e) {
+        console.error('Failed to scrape full text for RAG indexing:', e);
+        fullText = item.content.raw_text || '';
+      }
+    }
+    textToEmbed = `Title: ${item.title || 'Untitled Article'}\nURL: ${item.url}\n\n${fullText}`;
+  } else {
+    let contentText = item.content.raw_text || '';
+    if (item.type === 'todo' && item.content.todos) {
+      const todoList = item.content.todos.map(t => `- [${t.completed ? 'x' : ' '}] ${t.text}`).join('\n');
+      contentText = (contentText ? contentText + '\n' : '') + todoList;
+    }
+    textToEmbed = `Title: ${item.title || 'Untitled Note'}\nType: ${item.type}\n\n${contentText}`;
+  }
+
+  if (!textToEmbed.trim()) return;
+
+  const chunks = chunkText(textToEmbed);
+  const ragChunks = [];
+  
+  for (let i = 0; i < chunks.length; i++) {
+    try {
+      const vector = await getEmbedding(chunks[i]);
+      ragChunks.push({
+        text: chunks[i],
+        vector: vector
+      });
+      await new Promise(r => setTimeout(r, 150));
+    } catch (e) {
+      console.error(`Failed to generate embedding for chunk ${i} of item ${item.id}:`, e);
+    }
+  }
+
+  if (ragChunks.length > 0) {
+    item.rag_chunks = ragChunks;
+    
+    const dbChunks = ragChunks.map((c, idx) => ({
+      id: `${item.id}_${idx}`,
+      itemId: item.id,
+      text: c.text,
+      vector: c.vector
+    }));
+    await MindDB.saveChunks(item.id, dbChunks);
+    
+    if (item._drive_file_id) {
+      await uploadFileContent(item._drive_file_id, item);
+    }
+  }
+}
+
+// --- 6. Background RAG Embeddings Indexer ---
+let isEmbeddingIndexingRunning = false;
+
+async function runBackgroundEmbeddingIndexing() {
+  if (isEmbeddingIndexingRunning) return;
+  
+  let apiKey = safeStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '';
+  const email = userEmail || safeStorage.getItem('mymind_user_email');
+  const isChakshu = email === 'chakshu.grover8@gmail.com';
+  if (!apiKey && !isChakshu) {
+    console.log('Skipping RAG indexing: Gemini key not configured.');
+    return;
+  }
+
+  isEmbeddingIndexingRunning = true;
+  console.log('Starting background RAG embedding indexing...');
+
+  try {
+    await MindDB.init();
+  } catch (e) {
+    console.error('Failed to initialize MindDB:', e);
+    isEmbeddingIndexingRunning = false;
+    return;
+  }
+
+  let allChunks = [];
+  try {
+    allChunks = await MindDB.getAllChunks();
+  } catch (e) {
+    console.error('Failed to read chunks from MindDB:', e);
+  }
+  const indexedItemIds = new Set(allChunks.map(c => c.itemId));
+
+  // 1. Cache any newly synced items that have embeddings on Drive but aren't in IndexedDB yet
+  const itemsToCache = driveFiles.filter(item => !item.isPlaceholder && item.rag_chunks && item.rag_chunks.length > 0 && !indexedItemIds.has(item.id));
+  for (const item of itemsToCache) {
+    try {
+      const dbChunks = item.rag_chunks.map((c, idx) => ({
+        id: `${item.id}_${idx}`,
+        itemId: item.id,
+        text: c.text,
+        vector: c.vector
+      }));
+      await MindDB.saveChunks(item.id, dbChunks);
+      indexedItemIds.add(item.id); // Mark as indexed locally
+    } catch (err) {
+      console.error('Failed to cache existing chunks in MindDB:', err);
+    }
+  }
+
+  // 2. Filter out items that need embedding generation (no chunks locally or on Drive)
+  const itemsToIndex = driveFiles.filter(item => !item.isPlaceholder && !indexedItemIds.has(item.id));
+  
+  if (itemsToIndex.length === 0) {
+    console.log('All local items are indexed for RAG.');
+    isEmbeddingIndexingRunning = false;
+    return;
+  }
+
+  console.log(`Found ${itemsToIndex.length} items to index for RAG.`);
+  
+  for (const item of itemsToIndex) {
+    try {
+      console.log(`Indexing item for RAG: ${item.title || item.id}`);
+      await indexItemForRAG(item);
+    } catch (e) {
+      console.error(`Failed to RAG-index item ${item.id}:`, e);
+    }
+    await new Promise(r => setTimeout(r, 300));
+  }
+
+  console.log('Background RAG embedding indexing complete!');
+  isEmbeddingIndexingRunning = false;
+}
+
+// --- 7. Chat Modal and Messaging Handlers ---
+function appendChatMessage(sender, text, id = null) {
+  const container = document.getElementById('chat-messages');
+  if (!container) return null;
+  
+  const msgEl = document.createElement('div');
+  msgEl.className = `chat-message ${sender}`;
+  if (id) msgEl.id = id;
+  
+  const contentEl = document.createElement('div');
+  contentEl.className = 'chat-message-content';
+  contentEl.innerHTML = sender === 'ai' ? renderMarkdown(text) : text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+  msgEl.appendChild(contentEl);
+  
+  container.appendChild(msgEl);
+  container.scrollTop = container.scrollHeight;
+  return contentEl;
+}
+
+async function handleChatSubmit(e) {
+  e.preventDefault();
+  const inputEl = document.getElementById('chat-input');
+  const query = inputEl.value.trim();
+  if (!query) return;
+  
+  inputEl.value = '';
+  appendChatMessage('user', query);
+  
+  const aiMessageId = 'ai-msg-' + Date.now();
+  const aiMessageEl = appendChatMessage('ai', 'Thinking...', aiMessageId);
+  if (aiMessageEl) aiMessageEl.classList.add('loading');
+  
+  console.log('[Chat debug] query:', query);
+  try {
+    let topChunks = [];
+    if (chatFocusItem) {
+      console.log('[Chat debug] Querying in focused scope for item ID:', chatFocusItem.id);
+      const allChunks = await MindDB.getAllChunks();
+      let itemChunks = allChunks.filter(c => c.itemId === chatFocusItem.id);
+      
+      if (itemChunks.length === 0) {
+        console.log('[Chat debug] Card not indexed yet. Indexing now...');
+        await indexItemForRAG(chatFocusItem);
+        const updatedChunks = await MindDB.getAllChunks();
+        itemChunks = updatedChunks.filter(c => c.itemId === chatFocusItem.id);
+      }
+      
+      if (itemChunks.length === 0) {
+        console.log('[Chat debug] Focus card contains no indexable text.');
+        if (aiMessageEl) {
+          aiMessageEl.classList.remove('loading');
+          aiMessageEl.textContent = 'This card does not contain any text context to chat with.';
+        }
+        return;
+      }
+      
+      console.log('[Chat debug] Found chunks for focused card:', itemChunks.length);
+      const queryVector = await getEmbedding(query);
+      topChunks = itemChunks.map(chunk => {
+        const score = cosineSimilarity(queryVector, chunk.vector);
+        return { ...chunk, score };
+      }).sort((a, b) => b.score - a.score).slice(0, 5);
+      
+    } else {
+      console.log('[Chat debug] Getting embedding & searching vector chunks globally...');
+      topChunks = await searchVectorChunks(query, 5);
+    }
+    console.log('[Chat debug] topChunks selected:', topChunks.length, topChunks);
+    
+    if (topChunks.length === 0) {
+      console.log('[Chat debug] No matching context found.');
+      if (aiMessageEl) {
+        aiMessageEl.classList.remove('loading');
+        aiMessageEl.textContent = 'I cannot find any relevant information in your saved items. Try adding some articles or notes first!';
+      }
+      return;
+    }
+    
+    const contextText = topChunks.map((chunk, idx) => {
+      const item = driveFiles.find(f => f.id === chunk.itemId);
+      const title = item ? item.title : 'Saved Item';
+      const sourceInfo = item && item.url ? `(Source: ${title} - ${item.url})` : `(Source: ${title})`;
+      return `[Chunk ${idx + 1}] ${sourceInfo}\n${chunk.text}`;
+    }).join('\n\n');
+    
+    if (aiMessageEl) {
+      aiMessageEl.textContent = '';
+      aiMessageEl.classList.remove('loading');
+    }
+    
+    let apiKey = safeStorage.getItem(STORAGE_KEYS.GEMINI_KEY) || '';
+    console.log('[Chat debug] Using API Key:', apiKey ? 'YES (length: ' + apiKey.length + ')' : 'NO (empty)');
+    
+    const prompt = `You are a personal assistant for the user's private mindspace. Answer the user's question based ONLY on the provided context of their saved links, notes, and checklist items.
+    
+    CRITICAL RULES:
+    1. Answer the question accurately using ONLY the context provided.
+    2. If the answer cannot be determined from the context, politely say: "I couldn't find the answer in your saved items." Do not use external knowledge or make up facts.
+    3. Be concise and friendly. Format key terms in bold.
+    4. Reference the source names or URLs when sharing info (e.g. "According to your saved article [Title]...").
+    
+    Context:
+    ---
+    ${contextText}
+    ---
+    
+    Question: ${query}`;
+
+    const modelName = 'gemini-3.1-flash-lite';
+    let timeoutId;
+    let response;
+    
+    try {
+      console.log(`[Chat debug] Fetching model ${modelName} with 12s timeout...`);
+      const controller = new AbortController();
+      timeoutId = setTimeout(() => controller.abort(), 12000);
+      
+      response = await fetch(`/api/gemini?model=${modelName}&key=${apiKey}&stream=true`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }]
+        }),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+    } catch (err) {
+      if (timeoutId) clearTimeout(timeoutId);
+      console.error('[Chat debug] Request threw error:', err);
+      throw err;
+    }
+    
+    console.log(`[Chat debug] Model ${modelName} returned status:`, response.status, response.statusText);
+    if (!response.ok) {
+      console.error('[Chat debug] API request failed.');
+      throw new Error(`Chat API error: ${response.statusText}`);
+    }
+    
+    console.log('[Chat debug] Response.body present?', !!response.body);
+    if (!response.body) {
+      const data = await response.json();
+      console.log('[Chat debug] Non-streamed response data:', data);
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response';
+      if (aiMessageEl) {
+        aiMessageEl.innerHTML = renderMarkdown(text);
+      }
+      return;
+    }
+    
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let fullText = '';
+    let lastParsedIndex = 0;
+    
+    function parseBuffer() {
+      const regex = /"text"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+      regex.lastIndex = lastParsedIndex;
+      
+      let match;
+      while ((match = regex.exec(buffer)) !== null) {
+        try {
+          const textVal = JSON.parse(`"${match[1]}"`);
+          fullText += textVal;
+          if (aiMessageEl) {
+            aiMessageEl.innerHTML = renderMarkdown(fullText);
+          }
+          const messagesContainer = document.getElementById('chat-messages');
+          if (messagesContainer) {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+          }
+          lastParsedIndex = regex.lastIndex;
+        } catch (e) {
+          break;
+        }
+      }
+    }
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        buffer += decoder.decode();
+        parseBuffer();
+        break;
+      }
+      
+      buffer += decoder.decode(value, { stream: true });
+      parseBuffer();
+    }
+    
+  } catch (err) {
+    console.error('Chat error:', err);
+    if (aiMessageEl) {
+      aiMessageEl.classList.remove('loading');
+      aiMessageEl.textContent = 'Oops, something went wrong. Make sure your Gemini API key is configured correctly in Settings.';
+    }
+  }
+}
+
+// --- Initializing UI Elements ---
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
 }
 
 

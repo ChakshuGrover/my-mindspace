@@ -24,7 +24,7 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   
   <!-- Styling -->
-  <link rel="stylesheet" href="style.css?v=1.8.3" />
+  <link rel="stylesheet" href="style.css?v=1.9.5" />
 </head>
 <body>
 
@@ -99,6 +99,9 @@
           </button>
           <button class="nav-item" id="nav-view-spatial" style="margin-block-start: 4px;">
             <span class="nav-icon">🕸️</span> Spatial Canvas
+          </button>
+          <button class="nav-item" id="btn-chat" style="margin-block-start: 4px;">
+            <span class="nav-icon">💬</span> Chat with Mind
           </button>
         </div>
 
@@ -194,6 +197,11 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M23 4v6h-6"></path>
               <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+            </svg>
+          </button>
+          <button id="btn-mobile-chat" class="btn-mobile-action" title="Chat with Mind">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
           </button>
           <button id="btn-mobile-settings" class="btn-mobile-action" title="Settings">
@@ -438,6 +446,37 @@
     </div>
   </div>
 
+  <!-- Chat Modal Overlay -->
+  <div id="chat-modal" class="modal" hidden>
+    <div class="modal-backdrop" id="chat-modal-backdrop"></div>
+    <div class="modal-panel modal-panel--chat">
+      <header class="modal-header">
+        <h3>Chat with your Mind</h3>
+        <button class="btn-close" id="btn-close-chat-modal">&times;</button>
+      </header>
+      <div id="chat-scope-area" class="chat-scope-area">
+        <div class="chat-scope-selector-container">
+          <select id="chat-card-selector" class="chat-card-selector">
+            <option value="">🔍 Focus on a specific card...</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-body chat-container">
+        <div id="chat-messages" class="chat-messages">
+          <div class="chat-message system">
+            <div class="chat-message-content">
+              Ask me anything about your saved notes, links, articles, and checklists. I will answer using only your saved context.
+            </div>
+          </div>
+        </div>
+        <form id="chat-form" class="chat-form">
+          <input type="text" id="chat-input" placeholder="Ask your mind..." required autocomplete="off">
+          <button type="submit" class="btn btn--primary">Send</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!-- Create Folder Modal Overlay -->
   <div id="folder-modal" class="modal" hidden>
     <div class="modal-backdrop" id="folder-modal-backdrop"></div>
@@ -549,6 +588,10 @@
         </div>
         <div class="detail-actions">
           <a href="#" target="_blank" class="btn btn--primary btn--small" id="btn-open-link" style="display: none; text-decoration: none; align-items: center; justify-content: center; font-weight: 600; margin-inline-end: 8px;">Open</a>
+          <button class="btn btn--secondary btn--small" id="btn-chat-item" style="margin-inline-end: 8px; display: none; align-items: center; gap: 4px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            Chat
+          </button>
           <button class="btn btn--secondary btn--small" id="btn-edit-item" style="margin-inline-end: 8px;">Edit</button>
           <button class="btn btn--danger btn--small" id="btn-delete-item">Delete</button>
         </div>
@@ -582,6 +625,6 @@
 
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="app.js?v=1.8.2" defer></script>
+  <script src="app.js?v=1.9.5" defer></script>
 </body>
 </html>

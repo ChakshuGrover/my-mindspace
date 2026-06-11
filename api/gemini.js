@@ -16,14 +16,22 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const { model, key } = req.query;
+  const { model, key, stream } = req.query;
   const geminiKey = (key && key.trim() !== '') ? key : process.env.GEMINI_API_KEY;
   if (!geminiKey) {
     res.status(400).json({ error: 'Missing Gemini API Key' });
     return;
   }
 
-  const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemma-4-31b-it'}:generateContent?key=${geminiKey}`;
+  const modelName = model || 'gemma-4-31b-it';
+  let action = 'generateContent';
+  if (modelName.includes('embedding')) {
+    action = 'embedContent';
+  } else if (stream === 'true') {
+    action = 'streamGenerateContent';
+  }
+
+  const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:${action}?key=${geminiKey}`;
 
   try {
     // Vercel parses JSON bodies automatically into req.body
@@ -35,14 +43,24 @@ module.exports = async (req, res) => {
         'Content-Type': 'application/json',
       }
     }, (googleRes) => {
-      let body = '';
       res.status(googleRes.statusCode);
-      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Type', googleRes.headers['content-type'] || 'application/json');
       
-      googleRes.on('data', (chunk) => body += chunk);
-      googleRes.on('end', () => {
-        res.send(body);
-      });
+      if (stream === 'true') {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        googleRes.on('data', (chunk) => {
+          res.write(chunk);
+        });
+        googleRes.on('end', () => {
+          res.end();
+        });
+      } else {
+        let body = '';
+        googleRes.on('data', (chunk) => body += chunk);
+        googleRes.on('end', () => {
+          res.send(body);
+        });
+      }
     });
 
     forwardReq.on('error', (err) => {

@@ -360,10 +360,35 @@ async function parseHtmlMetadata(html, baseUrl) {
       .replace(/&#039;/g, "'");
   };
 
+  const extractCleanText = (htmlContent) => {
+    if (!htmlContent) return '';
+    // Strip tags with their inner content
+    let text = htmlContent.replace(/<(script|style|nav|header|footer|head|noscript|iframe|select|option)[^>]*>([\s\S]*?)<\/\1>/gi, '');
+    // Strip all other HTML tags
+    text = text.replace(/<[^>]+>/g, ' ');
+    // Decode basic HTML entities
+    text = text.replace(/&amp;/g, '&')
+               .replace(/&lt;/g, '<')
+               .replace(/&gt;/g, '>')
+               .replace(/&quot;/g, '"')
+               .replace(/&#039;/g, "'")
+               .replace(/&nbsp;/g, ' ')
+               .replace(/&mdash;/g, '—')
+               .replace(/&ndash;/g, '–');
+    // Collapse whitespace
+    text = text.replace(/\s+/g, ' ').trim();
+    // Truncate if too long to prevent Vercel/Google Drive payload issues
+    if (text.length > 60000) {
+      text = text.substring(0, 60000) + '... [Content Truncated]';
+    }
+    return text;
+  };
+
   return {
     title: unescapeHtml(title).trim(),
     description: unescapeHtml(description).trim(),
-    image: image.trim()
+    image: image.trim(),
+    fullText: extractCleanText(html)
   };
 }
 
@@ -400,7 +425,8 @@ module.exports = async (req, res) => {
         res.status(200).json({
           title: targetUrl.split('/').pop() || targetUrl,
           description: '',
-          image: ''
+          image: '',
+          fullText: ''
         });
         return;
       }
