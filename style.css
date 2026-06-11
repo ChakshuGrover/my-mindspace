@@ -945,6 +945,73 @@ html {
   box-shadow: 0 12px 30px rgba(168, 85, 247, 0.6);
 }
 
+.floating-add-container.open .floating-add-btn {
+  transform: rotate(135deg);
+  background-color: var(--text-muted);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* --- Speed Dial Sub-Buttons --- */
+.sub-add-buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+  position: absolute;
+  bottom: 72px;
+  inset-inline-end: 0;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(20px) scale(0.9);
+  transition: opacity 0.3s var(--ease-premium), transform 0.3s var(--ease-premium);
+}
+
+.floating-add-container.open .sub-add-buttons {
+  pointer-events: auto;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.sub-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(26, 24, 33, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 24px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  white-space: nowrap;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: transform 0.2s var(--ease-premium), background 0.2s var(--ease-premium), border-color 0.2s var(--ease-premium), box-shadow 0.2s var(--ease-premium);
+}
+
+.sub-add-btn span {
+  font-family: var(--font-sans);
+}
+
+.sub-add-btn:hover {
+  transform: translateY(-2px) scale(1.04);
+  background: var(--accent-purple);
+  border-color: var(--accent-purple);
+  box-shadow: 0 12px 24px rgba(168, 85, 247, 0.4);
+}
+
+.floating-add-container.open .sub-add-buttons .sub-add-btn:nth-child(1) {
+  transition-delay: 0.03s;
+}
+.floating-add-container.open .sub-add-buttons .sub-add-btn:nth-child(2) {
+  transition-delay: 0.08s;
+}
+.floating-add-container.open .sub-add-buttons .sub-add-btn:nth-child(3) {
+  transition-delay: 0.13s;
+}
+
 /* --- Modal Overlays & Dialogs --- */
 .modal {
   position: fixed;
@@ -1334,6 +1401,90 @@ html {
   line-height: 1.6;
   color: var(--text-secondary);
   white-space: pre-wrap;
+}
+
+/* Markdown Rendering Styling */
+.detail-body-text.markdown-rendered {
+  white-space: normal;
+  color: var(--text-primary);
+}
+
+.detail-body-text.markdown-rendered h1,
+.detail-body-text.markdown-rendered h2,
+.detail-body-text.markdown-rendered h3,
+.detail-body-text.markdown-rendered h4 {
+  color: #fff;
+  margin-block-start: 1.4rem;
+  margin-block-end: 0.7rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.detail-body-text.markdown-rendered h1 { font-size: 1.6rem; border-block-end: 1px solid var(--border-glass); padding-block-end: 8px; }
+.detail-body-text.markdown-rendered h2 { font-size: 1.35rem; }
+.detail-body-text.markdown-rendered h3 { font-size: 1.15rem; }
+.detail-body-text.markdown-rendered h4 { font-size: 1rem; }
+
+.detail-body-text.markdown-rendered p {
+  margin-block-end: 1.2rem;
+}
+
+.detail-body-text.markdown-rendered ul,
+.detail-body-text.markdown-rendered ol {
+  margin-block-start: 0.5rem;
+  margin-block-end: 1.2rem;
+  padding-inline-start: 24px;
+}
+
+.detail-body-text.markdown-rendered li {
+  margin-block-end: 0.4rem;
+}
+
+.detail-body-text.markdown-rendered blockquote {
+  border-inline-start: 4px solid var(--accent-purple);
+  margin: 1.5rem 0;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-secondary);
+  font-style: italic;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.detail-body-text.markdown-rendered code {
+  font-family: monospace;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: var(--accent-pink);
+}
+
+.detail-body-text.markdown-rendered pre {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-glass);
+  padding: 16px;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  margin: 1.2rem 0;
+}
+
+.detail-body-text.markdown-rendered pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+  font-size: 0.9rem;
+}
+
+.detail-body-text.markdown-rendered a {
+  color: var(--accent-purple);
+  text-decoration: none;
+  border-block-end: 1px dashed var(--accent-purple);
+  transition: color var(--transition-fast);
+}
+
+.detail-body-text.markdown-rendered a:hover {
+  color: #c084fc;
+  border-block-end-style: solid;
 }
 
 .detail-key-points {
@@ -2265,5 +2416,60 @@ label {
   stroke-width: 2.5px;
   stroke-dasharray: none;
   filter: drop-shadow(0 0 5px var(--accent-blue));
+}
+
+/* --- Notion-style Add Modal Editor additions --- */
+.add-title-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-glass);
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: 1.45rem;
+  font-weight: 700;
+  padding: 8px 0;
+  margin-block-end: 16px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.add-title-input::placeholder {
+  color: var(--text-muted);
+}
+
+.add-title-input:focus {
+  border-color: var(--accent-purple);
+}
+
+.markdown-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-block-end: 12px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-sm);
+}
+
+.markdown-toolbar button {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.markdown-toolbar button:hover {
+  background: var(--bg-glass-active);
+  color: #fff;
 }
 

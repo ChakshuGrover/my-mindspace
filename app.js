@@ -32,6 +32,7 @@ let aiFilteredIds = null;
 let aiSearchAbortController = null;
 let currentDetailItem = null;
 let isEditingDetail = false;
+let activeAddType = 'general'; // 'general', 'note', 'todo', 'link'
 
 // --- Spatial Canvas (Mind Map) Global State ---
 let currentViewMode = 'grid'; // 'grid' or 'spatial'
@@ -449,12 +450,176 @@ function setupEventListeners() {
     });
   }
 
-  document.getElementById('btn-quick-add').addEventListener('click', () => {
-    if (currentViewMode === 'spatial') {
-      canvasPendingCoords = getCanvasCenterCoords();
+  const fabContainer = document.getElementById('floating-add-container');
+  
+  if (fabContainer) {
+    document.getElementById('btn-quick-add').addEventListener('click', (e) => {
+      e.stopPropagation();
+      fabContainer.classList.toggle('open');
+    });
+
+    // Close FAB menu when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!fabContainer.contains(e.target)) {
+        fabContainer.classList.remove('open');
+      }
+    });
+
+    // Helper for inserting markdown tags
+    const insertMarkdownHelper = (tag) => {
+      const textarea = document.getElementById('add-input');
+      if (!textarea) return;
+      
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
+      const selectedText = text.substring(start, end);
+      
+      let replacement = '';
+      let cursorOffset = 0;
+      
+      switch (tag) {
+        case 'bold':
+          replacement = `**${selectedText}**`;
+          cursorOffset = selectedText ? 0 : 2;
+          break;
+        case 'italic':
+          replacement = `*${selectedText}*`;
+          cursorOffset = selectedText ? 0 : 1;
+          break;
+        case 'h1':
+          replacement = `${start === 0 || text[start - 1] === '\n' ? '' : '\n'}# ${selectedText}`;
+          cursorOffset = 0;
+          break;
+        case 'h2':
+          replacement = `${start === 0 || text[start - 1] === '\n' ? '' : '\n'}## ${selectedText}`;
+          cursorOffset = 0;
+          break;
+        case 'h3':
+          replacement = `${start === 0 || text[start - 1] === '\n' ? '' : '\n'}### ${selectedText}`;
+          cursorOffset = 0;
+          break;
+        case 'list':
+          replacement = `${start === 0 || text[start - 1] === '\n' ? '' : '\n'}- ${selectedText}`;
+          cursorOffset = 0;
+          break;
+        case 'quote':
+          replacement = `${start === 0 || text[start - 1] === '\n' ? '' : '\n'}> ${selectedText}`;
+          cursorOffset = 0;
+          break;
+        case 'code':
+          replacement = `\`${selectedText}\``;
+          cursorOffset = selectedText ? 0 : 1;
+          break;
+      }
+      
+      textarea.value = text.substring(0, start) + replacement + text.substring(end);
+      textarea.focus();
+      
+      // Reset selection
+      const newCursorPos = start + replacement.length - cursorOffset;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+      
+      // Trigger input event to update counts
+      textarea.dispatchEvent(new Event('input'));
+    };
+
+    // Bind Markdown Toolbar buttons
+    document.querySelectorAll('#add-markdown-toolbar button').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const tag = btn.dataset.tag;
+        insertMarkdownHelper(tag);
+      });
+    });
+
+    // Bind Word Counter
+    const addInputEl = document.getElementById('add-input');
+    const wordCountEl = document.getElementById('add-word-count');
+    if (addInputEl && wordCountEl) {
+      addInputEl.addEventListener('input', () => {
+        const text = addInputEl.value.trim();
+        const wordCount = text ? text.split(/\s+/).filter(Boolean).length : 0;
+        const charCount = text.length;
+        wordCountEl.textContent = `${wordCount} word${wordCount !== 1 ? 's' : ''} | ${charCount} char${charCount !== 1 ? 's' : ''}`;
+      });
     }
-    openModal('add-modal');
-  });
+
+    const configureAddModal = (type) => {
+      activeAddType = type;
+      if (currentViewMode === 'spatial') {
+        canvasPendingCoords = getCanvasCenterCoords();
+      }
+
+      const addModalTitle = document.getElementById('add-modal-title');
+      const addInput = document.getElementById('add-input');
+      const titleInput = document.getElementById('add-title-input');
+      const markdownToolbar = document.getElementById('add-markdown-toolbar');
+      const wordCountContainer = document.getElementById('add-word-count');
+      const todoContainer = document.getElementById('add-todo-container');
+      const todoToggle = document.getElementById('add-todo-toggle');
+
+      // Reset default modal configuration
+      if (todoToggle) todoToggle.checked = false;
+      if (todoContainer) todoContainer.style.display = 'flex';
+      if (titleInput) {
+        titleInput.value = '';
+        titleInput.style.display = 'none';
+      }
+      if (markdownToolbar) markdownToolbar.style.display = 'none';
+      if (wordCountContainer) {
+        wordCountContainer.style.display = 'none';
+        wordCountContainer.textContent = '0 words | 0 chars';
+      }
+
+      if (type === 'note') {
+        if (addModalTitle) addModalTitle.textContent = 'Create Note';
+        if (addInput) addInput.placeholder = 'Write your note content here (Markdown supported)...';
+        if (todoContainer) todoContainer.style.display = 'none';
+        if (titleInput) {
+          titleInput.placeholder = 'Note Title...';
+          titleInput.style.display = 'block';
+        }
+        if (markdownToolbar) markdownToolbar.style.display = 'flex';
+        if (wordCountContainer) wordCountContainer.style.display = 'flex';
+      } else if (type === 'todo') {
+        if (addModalTitle) addModalTitle.textContent = 'Create Checklist';
+        if (addInput) addInput.placeholder = 'Enter tasks (one per line)...';
+        if (todoToggle) todoToggle.checked = true;
+        if (todoContainer) todoContainer.style.display = 'none';
+        if (titleInput) {
+          titleInput.placeholder = 'Checklist Title...';
+          titleInput.style.display = 'block';
+        }
+      } else if (type === 'link') {
+        if (addModalTitle) addModalTitle.textContent = 'Save Link';
+        if (addInput) addInput.placeholder = 'Paste a link / URL (e.g., https://...)';
+        if (todoContainer) todoContainer.style.display = 'none';
+        if (titleInput) {
+          titleInput.placeholder = 'Link Title (Optional)...';
+          titleInput.style.display = 'block';
+        }
+      } else {
+        if (addModalTitle) addModalTitle.textContent = 'Remember Something';
+        if (addInput) addInput.placeholder = 'Paste a link, write a note, or write a checklist...';
+      }
+
+      fabContainer.classList.remove('open');
+      openModal('add-modal');
+    };
+
+    document.getElementById('btn-add-note').addEventListener('click', () => configureAddModal('note'));
+    document.getElementById('btn-add-todo').addEventListener('click', () => configureAddModal('todo'));
+    document.getElementById('btn-add-link').addEventListener('click', () => configureAddModal('link'));
+  } else {
+    document.getElementById('btn-quick-add').addEventListener('click', () => {
+      if (currentViewMode === 'spatial') {
+        canvasPendingCoords = getCanvasCenterCoords();
+      }
+      openModal('add-modal');
+    });
+  }
+
   document.getElementById('btn-cancel-add').addEventListener('click', () => closeModal('add-modal'));
   document.getElementById('btn-close-add-modal').addEventListener('click', () => closeModal('add-modal'));
   document.getElementById('add-modal-backdrop').addEventListener('click', () => closeModal('add-modal'));
@@ -620,9 +785,13 @@ function openModal(modalId) {
   modal.removeAttribute('hidden');
   document.body.classList.add('modal-open');
   
-  // Set focus on inputs
   if (modalId === 'add-modal') {
-    document.getElementById('add-input').focus();
+    const titleInput = document.getElementById('add-title-input');
+    if (titleInput && titleInput.style.display !== 'none') {
+      titleInput.focus();
+    } else {
+      document.getElementById('add-input').focus();
+    }
     populateFolderSelect();
     // Reset inline folder fields
     const folderSelect = document.getElementById('add-folder-select');
@@ -1508,6 +1677,45 @@ async function runBackgroundMetadataEnrichment() {
   renderGrid();
 }
 
+// Markdown parser with marked.js and fallback regex parser
+function renderMarkdown(text) {
+  if (!text) return '';
+  
+  if (window.marked) {
+    try {
+      const parseFn = typeof window.marked.parse === 'function' ? window.marked.parse : (typeof window.marked === 'function' ? window.marked : null);
+      if (parseFn) {
+        return parseFn(text, {
+          gfm: true,
+          breaks: true
+        });
+      }
+    } catch (e) {
+      console.error('Failed to parse markdown with marked.js, falling back:', e);
+    }
+  }
+  
+  // Robust fallback regex parser
+  let escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+    
+  escaped = escaped.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+  escaped = escaped.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+  escaped = escaped.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+  escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  escaped = escaped.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  escaped = escaped.replace(/__(.*?)__/g, '<strong>$1</strong>');
+  escaped = escaped.replace(/_(.*?)_/g, '<em>$1</em>');
+  escaped = escaped.replace(/`(.*?)`/g, '<code>$1</code>');
+  escaped = escaped.replace(/^\s*[-*]\s+(.*$)/gim, '<li>$1</li>');
+  escaped = escaped.replace(/^\s*&gt;\s+(.*$)/gim, '<blockquote>$1</blockquote>');
+  escaped = escaped.replace(/\n/g, '<br>');
+  
+  return escaped;
+}
+
 // Fallback Mock Local Parser in case API key is missing
 function mockAnalysis(inputText) {
   let type = 'note';
@@ -1562,7 +1770,10 @@ async function saveNewItem() {
   const todoToggle = document.getElementById('add-todo-toggle');
   const newFolderInput = document.getElementById('add-new-folder-name');
   
+  const titleInput = document.getElementById('add-title-input');
+  
   const rawInputText = addInput.value.trim();
+  const customTitle = titleInput ? titleInput.value.trim() : '';
   let folderId = folderSelect.value;
   const isTodo = todoToggle ? todoToggle.checked : false;
 
@@ -1600,6 +1811,7 @@ async function saveNewItem() {
     // If note text input is empty, just create the folder and return
     if (!rawInputText) {
       if (newFolderInput) newFolderInput.value = '';
+      if (titleInput) titleInput.value = '';
       closeModal('add-modal');
       showToast(`Created folder "${newFolderName}"`);
       return;
@@ -1617,6 +1829,7 @@ async function saveNewItem() {
 
   // Close modal and reset input immediately!
   addInput.value = '';
+  if (titleInput) titleInput.value = '';
   if (todoToggle) todoToggle.checked = false;
   if (newFolderInput) newFolderInput.value = '';
   closeModal('add-modal');
@@ -1628,7 +1841,7 @@ async function saveNewItem() {
     id: placeholderId,
     created_at: new Date().toISOString(),
     type: isTodo ? 'todo' : 'note',
-    title: 'Processing...',
+    title: customTitle || 'Processing...',
     folders: folderId ? [folderId] : [],
     color: selectedColor,
     pinned: false,
@@ -1641,7 +1854,7 @@ async function saveNewItem() {
   renderGrid();
 
   // Run the background save asynchronously
-  runBackgroundSave(placeholderId, rawInputText, folderId, isTodo, selectedColor);
+  runBackgroundSave(placeholderId, rawInputText, folderId, activeAddType, selectedColor, customTitle);
 }
 
 function addNewItemDirectly(rawInputText, folderId = '') {
@@ -1708,7 +1921,7 @@ function extractAndCleanUrl(text) {
   return null;
 }
 
-async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo = false, color = 'default') {
+async function runBackgroundSave(placeholderId, rawInputText, folderId, itemType = 'general', color = 'default', customTitle = '') {
   let pendingX = undefined;
   let pendingY = undefined;
   if (canvasPendingCoords) {
@@ -1717,30 +1930,35 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo =
     canvasPendingCoords = null;
   }
   try {
-    // Extract and clean the URL if present
-    const cleanedUrl = !isTodo ? extractAndCleanUrl(rawInputText) : null;
-    const isUrl = !!cleanedUrl;
+    const isTodo = itemType === 'todo';
+    
+    // Extract and clean the URL if present (only if not a todo or note)
+    const canBeUrl = itemType !== 'todo' && itemType !== 'note';
+    const cleanedUrl = canBeUrl ? extractAndCleanUrl(rawInputText) : null;
+    const isUrl = itemType === 'link' || (itemType === 'general' && !!cleanedUrl);
+    
     let aiInputText = rawInputText;
     let scrapedImage = null;
     let scrapedTitle = null;
 
     if (isUrl) {
       try {
-        const scrapeRes = await fetch(`/api/scrape?url=${encodeURIComponent(cleanedUrl)}`);
+        const scrapeRes = await fetch(`/api/scrape?url=${encodeURIComponent(cleanedUrl || rawInputText)}`);
         if (scrapeRes.ok) {
           const meta = await scrapeRes.json();
           scrapedImage = meta.image;
           scrapedTitle = meta.title;
-          aiInputText = `Webpage URL: ${cleanedUrl}\nTitle: ${meta.title}\nDescription: ${meta.description}`;
+          aiInputText = `Webpage URL: ${cleanedUrl || rawInputText}\nTitle: ${meta.title}\nDescription: ${meta.description}`;
         }
       } catch (e) {
         console.error('Failed to scrape URL metadata in background:', e);
       }
     }
 
-    // 1. Run Gemma 4 31B / Gemini 3.1 Cloud analysis (Skip for To-Dos)
+    // 1. Run Gemma 4 31B / Gemini 3.1 Cloud analysis (Only run for links or general URL entries)
     let aiParsed = null;
-    if (!isTodo) {
+    const runAI = itemType === 'link' || (itemType === 'general' && isUrl);
+    if (runAI) {
       aiParsed = await analyzeInputWithAI(aiInputText);
     }
     
@@ -1748,23 +1966,23 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, isTodo =
     const newItem = {
       id: 'item-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
       created_at: new Date().toISOString(),
-      type: isTodo ? 'todo' : ((aiParsed && aiParsed.type === 'note' && isUrl) ? 'article' : aiParsed.type),
-      title: isTodo ? (rawInputText.split('\n')[0].trim().substring(0, 40) || 'To-Do List') : (aiParsed ? (aiParsed.title || 'Saved Item') : scrapedTitle || 'Saved Item'),
+      type: isTodo ? 'todo' : (isUrl ? 'article' : 'note'),
+      title: customTitle || (isTodo ? (rawInputText.split('\n')[0].trim().substring(0, 40) || 'To-Do List') : (isUrl ? (aiParsed ? (aiParsed.title || 'Saved Item') : scrapedTitle || 'Saved Item') : (rawInputText.split('\n')[0].trim().substring(0, 40) || 'Saved Note'))),
       folders: folderId ? [folderId] : [],
       color: color,
       pinned: false,
       canvas_x: pendingX,
       canvas_y: pendingY,
-      url: (!isTodo && aiParsed && (aiParsed.type === 'article' || isUrl)) ? (cleanedUrl || rawInputText) : '',
+      url: isUrl ? (cleanedUrl || rawInputText) : '',
       image: scrapedImage || '',
       ai_analysis: (aiParsed && aiParsed.ai_analysis) || {
-        summary: isTodo ? 'To-Do Checklist' : 'Saved note.',
-        tags: isTodo ? ['todo'] : ['inbox'],
+        summary: isTodo ? 'To-Do Checklist' : (isUrl ? 'Web Article' : 'Handwritten Note'),
+        tags: isTodo ? ['todo'] : (isUrl ? ['link', 'web'] : ['note']),
         vibe: 'clean',
         key_takeaways: []
       },
       content: {
-        raw_text: isTodo ? rawInputText : ((aiParsed && aiParsed.content && aiParsed.content.raw_text) || rawInputText),
+        raw_text: (isTodo || !isUrl) ? rawInputText : ((aiParsed && aiParsed.content && aiParsed.content.raw_text) || rawInputText),
         word_count: rawInputText.split(/\s+/).length,
         reading_time_mins: Math.max(1, Math.ceil(rawInputText.split(/\s+/).length / 200))
       }
@@ -2423,7 +2641,7 @@ function showDetailModal(item) {
         ${item.content.raw_text ? `
           <div>
             <h4 class="detail-summary-title" style="margin-block-end: 16px;">Parsed Document Content</h4>
-            <div class="detail-body-text" style="white-space: pre-wrap;">${item.content.raw_text}</div>
+            <div class="detail-body-text markdown-rendered">${renderMarkdown(item.content.raw_text)}</div>
           </div>
         ` : ''}
       </div>
@@ -2457,7 +2675,7 @@ function showDetailModal(item) {
 
         <div>
           <h4 class="detail-summary-title" style="margin-block-end: 16px;">Raw Content</h4>
-          <div class="detail-body-text" style="white-space: pre-wrap;">${item.content.raw_text}</div>
+          <div class="detail-body-text markdown-rendered">${renderMarkdown(item.content.raw_text)}</div>
         </div>
       </div>
     `;
@@ -2715,7 +2933,7 @@ async function saveDetailEdits() {
   }
 
   let aiParsed = null;
-  if (item.type !== 'todo') {
+  if (item.type !== 'todo' && item.type !== 'note') {
     showToast('AI is analyzing updated changes...');
     setSyncStatus('syncing', 'AI Analyzing...');
     try {
