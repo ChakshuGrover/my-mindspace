@@ -901,6 +901,27 @@ function setupEventListeners() {
   document.getElementById('btn-save-folder').addEventListener('click', saveNewFolder);
   document.getElementById('btn-save-add').addEventListener('click', saveNewItem);
 
+  const btnDeleteAccount = document.getElementById('btn-delete-account');
+  if (btnDeleteAccount) {
+    btnDeleteAccount.addEventListener('click', async () => {
+      closeModal('settings-modal');
+      const confirmed = await showConfirm(
+        '⚠️ Delete MindSpace Account & Data?',
+        'This will permanently delete all your saved files, notes, folders, and settings from your Google Drive appdata directory. This action is completely irreversible.<br><br><strong>Are you absolutely sure you want to proceed?</strong>',
+        'Yes, delete everything',
+        'Cancel'
+      );
+      if (confirmed) {
+        const promptInput = prompt('To confirm deletion, please type "DELETE" below:');
+        if (promptInput === 'DELETE') {
+          await executeAccountDeletion();
+        } else {
+          showToast('Account deletion cancelled (verification code incorrect).');
+        }
+      }
+    });
+  }
+
   const btnCopyShortcutKey = document.getElementById('btn-copy-shortcut-key');
   if (btnCopyShortcutKey) {
     btnCopyShortcutKey.addEventListener('click', async () => {
@@ -4979,6 +5000,20 @@ const MindDB = {
     });
   },
 
+  clearAll() {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        resolve();
+        return;
+      }
+      const transaction = this.db.transaction(['chunks'], 'readwrite');
+      const store = transaction.objectStore('chunks');
+      const request = store.clear();
+      request.onsuccess = () => resolve();
+      request.onerror = (e) => reject(e);
+    });
+  },
+
   saveChunks(itemId, chunks) {
     return new Promise((resolve, reject) => {
       if (!this.db) {
@@ -6309,6 +6344,72 @@ function initPasteHandler() {
       handleAttachedFile(file);
     }
   });
+}
+
+async function executeAccountDeletion() {
+  setSyncStatus('syncing', 'Deleting Account...');
+  showToast('Erasing data from Google Drive. Please do not close this window...');
+  
+  try {
+    // 1. Fetch list of all files in the appDataFolder on Google Drive (paginated)
+    let files = [];
+    let pageToken = '';
+    do {
+      const listUrl = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=nextPageToken,files(id, name)&pageSize=1000${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+      const listRes = await fetch(listUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (!listRes.ok) {
+        throw new Error(`Failed to list project files from Drive: ${listRes.status}`);
+      }
+      const data = await listRes.json();
+      if (data.files) {
+        files = files.concat(data.files);
+      }
+      pageToken = data.nextPageToken || '';
+    } while (pageToken);
+    
+    if (files.length > 0) {
+      console.log(`Deleting ${files.length} files from Google Drive...`);
+      // Delete all files in parallel
+      const deletePromises = files.map(async (file) => {
+        const delRes = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        if (!delRes.ok && delRes.status !== 404 && delRes.status !== 410) {
+          console.warn(`Failed to delete file ${file.name} (ID: ${file.id}): status ${delRes.status}`);
+        }
+      });
+      await Promise.all(deletePromises);
+    }
+    
+    // 2. Clear IndexedDB Database
+    await MindDB.clearAll();
+    
+    // 3. Clear Local Storage
+    safeStorage.clear();
+    
+    // Reset global state variables
+    accessToken = null;
+    userEmail = null;
+    googleUserId = null;
+    settingsFileId = null;
+    driveFiles = [];
+    folders = [];
+    
+    // 4. Clear HTTP-Only cookie on server
+    fetch('/api/logout', { method: 'POST', credentials: 'include' })
+      .catch(err => console.warn('Failed to clear cookie on delete account:', err));
+      
+    // 5. Show success and redirect
+    showLandingPage();
+    showToast('Your MindSpace account and all files have been permanently deleted.');
+  } catch (err) {
+    console.error('Account deletion failed:', err);
+    showToast('An error occurred during account deletion. Some files may not have been deleted.');
+    setSyncStatus('synced', 'Delete Failed');
+  }
 }
 
 

@@ -2960,6 +2960,11 @@ label {
   color: #ef4444 !important;
 }
 
+#btn-delete-account:hover {
+  background: rgba(239, 68, 68, 0.3) !important;
+  transform: scale(1.01);
+}
+
 
 
 
