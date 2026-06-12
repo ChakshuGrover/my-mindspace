@@ -937,11 +937,6 @@ function setupEventListeners() {
     const query = e.target.value.trim();
     clearTimeout(searchTimeout);
     
-    const saveSearchBtn = document.getElementById('btn-save-search');
-    if (saveSearchBtn) {
-      saveSearchBtn.style.display = query ? 'flex' : 'none';
-    }
-    
     if (!query) {
       resetAISearch();
       renderGrid();
@@ -958,56 +953,6 @@ function setupEventListeners() {
       executeAISearch(query);
     }, 600);
   });
-
-  // Space modal type toggle
-  const typeManual = document.getElementById('space-type-manual');
-  const typeSmart = document.getElementById('space-type-smart');
-  const smartRuleContainer = document.getElementById('smart-space-rule-container');
-  
-  if (typeManual && typeSmart && smartRuleContainer) {
-    const toggleRuleInput = () => {
-      if (typeSmart.checked) {
-        smartRuleContainer.style.display = 'block';
-        const queryInput = document.getElementById('space-rule-query-input');
-        if (queryInput) queryInput.focus();
-      } else {
-        smartRuleContainer.style.display = 'none';
-      }
-    };
-    typeManual.addEventListener('change', toggleRuleInput);
-    typeSmart.addEventListener('change', toggleRuleInput);
-  }
-
-  // Save Search Space click
-  const btnSaveSearch = document.getElementById('btn-save-search');
-  if (btnSaveSearch) {
-    btnSaveSearch.addEventListener('click', () => {
-      const query = document.getElementById('search-input').value.trim();
-      if (!query) return;
-      openModal('folder-modal');
-      const radioSmart = document.getElementById('space-type-smart');
-      if (radioSmart) {
-        radioSmart.checked = true;
-        const container = document.getElementById('smart-space-rule-container');
-        if (container) container.style.display = 'block';
-      }
-      const ruleInput = document.getElementById('space-rule-query-input');
-      if (ruleInput) ruleInput.value = query;
-      const nameInput = document.getElementById('folder-name-input');
-      if (nameInput) {
-        nameInput.value = query.startsWith('#') ? query.substring(1) + ' Space' : query + ' Space';
-        nameInput.focus();
-      }
-    });
-  }
-
-  // Serendipity Shuffle click
-  const btnShuffle = document.getElementById('btn-serendipity-shuffle');
-  if (btnShuffle) {
-    btnShuffle.addEventListener('click', () => {
-      triggerSerendipity(true);
-    });
-  }
 
   // Hotkey commands (⌘K or Ctrl+K for search, Esc to close modals)
   window.addEventListener('keydown', (e) => {
@@ -1040,12 +985,6 @@ function setupEventListeners() {
         currentFilter = 'all';
         document.querySelectorAll('.sidebar-nav .nav-item, .folder-nav-item').forEach(el => el.classList.remove('active'));
         e.currentTarget.classList.add('active');
-      } else if (targetId === 'nav-view-serendipity') {
-        currentViewMode = 'serendipity';
-        currentFilter = 'all';
-        document.querySelectorAll('.sidebar-nav .nav-item, .folder-nav-item').forEach(el => el.classList.remove('active'));
-        e.currentTarget.classList.add('active');
-        triggerSerendipity(true);
       } else {
         // Standard category filters (Notes, Articles, To-Dos)
         document.querySelectorAll('.sidebar-nav .nav-item, .folder-nav-item').forEach(el => el.classList.remove('active'));
@@ -1449,16 +1388,13 @@ async function saveNewFolder() {
   const nameInput = document.getElementById('folder-name-input');
   const emojiInput = document.getElementById('folder-emoji-input');
   const colorInput = document.getElementById('folder-color-input');
-  const typeSmart = document.getElementById('space-type-smart');
-  const isSmart = typeSmart ? typeSmart.checked : false;
-  const ruleQuery = isSmart ? (document.getElementById('space-rule-query-input').value.trim() || nameInput.value.trim()) : '';
   
   const name = nameInput.value.trim();
-  const emoji = isSmart ? '✨' : (emojiInput.value.trim() || '📁');
+  const emoji = emojiInput.value.trim() || '📁';
   const color = colorInput.value;
 
   if (!name) {
-    showToast('Space name cannot be empty.');
+    showToast('Folder name cannot be empty.');
     return;
   }
 
@@ -1467,8 +1403,6 @@ async function saveNewFolder() {
     name: name,
     emoji: emoji,
     color: color,
-    isSmart: isSmart,
-    rule: isSmart ? { query: ruleQuery } : null,
     created_at: new Date().toISOString()
   };
 
@@ -1477,26 +1411,20 @@ async function saveNewFolder() {
   // Reset inputs
   nameInput.value = '';
   emojiInput.value = '📁';
-  const manualRadio = document.getElementById('space-type-manual');
-  if (manualRadio) manualRadio.checked = true;
-  const smartRuleContainer = document.getElementById('smart-space-rule-container');
-  if (smartRuleContainer) smartRuleContainer.style.display = 'none';
-  const ruleInput = document.getElementById('space-rule-query-input');
-  if (ruleInput) ruleInput.value = '';
   
   closeModal('folder-modal');
-  setSyncStatus('syncing', 'Saving Space...');
+  setSyncStatus('syncing', 'Saving Folder...');
 
   try {
     const foldersFileId = safeStorage.getItem('folders_file_id');
     await uploadFileContent(foldersFileId, folders);
     saveFoldersCache();
     renderSidebarFolders();
-    showToast(`Created space "${name}"`);
+    showToast(`Created folder "${name}"`);
     setSyncStatus('synced', 'Synced');
   } catch (err) {
-    console.error('Failed to save new space to Google Drive:', err);
-    showToast('Failed to save space to Google Drive.');
+    console.error('Failed to save new folder to Google Drive:', err);
+    showToast('Failed to save folder to Google Drive.');
     setSyncStatus('synced', 'Sync Failed');
   }
 }
@@ -1507,10 +1435,8 @@ function renderSidebarFolders() {
   container.innerHTML = '';
 
   folders.forEach(folder => {
-    // Count items belonging to this space
-    const count = folder.isSmart
-      ? driveFiles.filter(item => itemMatchesSmartSpace(item, folder.rule.query)).length
-      : driveFiles.filter(item => item.folders && item.folders.includes(folder.id)).length;
+    // Count items belonging to this folder
+    const count = driveFiles.filter(item => item.folders && item.folders.includes(folder.id)).length;
     
     const navItem = document.createElement('button');
     navItem.className = `folder-nav-item ${currentFilter === 'folder-' + folder.id ? 'active' : ''}`;
@@ -1521,11 +1447,10 @@ function renderSidebarFolders() {
         <span class="folder-dot" style="background-color: ${folder.color};"></span>
         <span class="folder-emoji">${folder.emoji}</span>
         <span class="folder-name">${folder.name}</span>
-        ${folder.isSmart ? `<span class="smart-space-badge" style="margin-inline-start: 6px;">Smart</span>` : ''}
       </div>
       <div style="display: flex; align-items: center; gap: 8px;">
         <span class="folder-count">${count}</span>
-        <span class="btn-delete-folder" title="Delete Space">&times;</span>
+        <span class="btn-delete-folder" title="Delete Folder">&times;</span>
       </div>
     `;
 
@@ -1771,8 +1696,6 @@ function resetAISearch() {
   if (container) container.classList.remove('ai-searching');
   const loader = document.getElementById('search-loader');
   if (loader) loader.setAttribute('hidden', 'true');
-  const saveSearchBtn = document.getElementById('btn-save-search');
-  if (saveSearchBtn) saveSearchBtn.style.display = 'none';
 }
 
 async function executeAISearch(query) {
@@ -2609,25 +2532,6 @@ function renderGrid() {
   const pinnedGrid = document.getElementById('pinned-grid');
   const othersTitle = document.getElementById('others-title');
   const othersSection = document.getElementById('others-section');
-
-  const serendipityView = document.getElementById('serendipity-canvas-view');
-  if (currentViewMode === 'serendipity') {
-    if (pinnedSection) pinnedSection.setAttribute('hidden', 'true');
-    if (othersSection) othersSection.setAttribute('hidden', 'true');
-    if (othersTitle) othersTitle.setAttribute('hidden', 'true');
-    grid.style.display = 'none';
-    
-    stopPhysicsSimulation();
-    const spatialView = document.getElementById('spatial-canvas-view');
-    if (spatialView) spatialView.setAttribute('hidden', 'true');
-    
-    if (serendipityView) serendipityView.removeAttribute('hidden');
-    emptyState.setAttribute('hidden', 'true');
-    triggerSerendipity(false);
-    return;
-  } else {
-    if (serendipityView) serendipityView.setAttribute('hidden', 'true');
-  }
 
   if (currentViewMode === 'spatial') {
     if (pinnedSection) pinnedSection.setAttribute('hidden', 'true');
@@ -6269,18 +6173,15 @@ function itemMatchesFilter(item, filter) {
 
   if (filter.startsWith('folder-')) {
     const folderId = filter.substring(7);
-    const folderObj = folders.find(f => f.id === folderId);
-    if (folderObj && folderObj.isSmart) {
-      return itemMatchesSmartSpace(item, folderObj.rule.query);
-    }
     return item.folders && item.folders.includes(folderId);
   }
 
   if (filter.startsWith('tag-')) {
     const tag = filter.substring(4).toLowerCase();
-    return item.ai_analysis && Array.isArray(item.ai_analysis.tags)
+    const hasTag = item.ai_analysis && Array.isArray(item.ai_analysis.tags)
       ? item.ai_analysis.tags.some(t => t.toLowerCase() === tag)
       : false;
+    return hasTag && item.type === 'article'; // Only show articles associated with this tag
   }
 
   if (filter === 'type-article') return item.type === 'article';
@@ -6292,31 +6193,6 @@ function itemMatchesFilter(item, filter) {
   return true;
 }
 
-function itemMatchesSmartSpace(item, query) {
-  if (!query || item.isPlaceholder) return false;
-  const q = query.toLowerCase().trim();
-  
-  let cleanQuery = q;
-  const isTagQuery = q.startsWith('#');
-  if (isTagQuery) {
-    cleanQuery = q.substring(1);
-  }
-  
-  const searchInTags = item.ai_analysis && Array.isArray(item.ai_analysis.tags)
-    ? item.ai_analysis.tags.some(tag => tag.toLowerCase() === cleanQuery || (!isTagQuery && tag.toLowerCase().includes(cleanQuery)))
-    : false;
-  if (searchInTags) return true;
-  if (isTagQuery) return false; 
-
-  const searchInTitle = item.title ? item.title.toLowerCase().includes(q) : false;
-  const searchInText = item.content && item.content.raw_text ? item.content.raw_text.toLowerCase().includes(q) : false;
-  const searchInSummary = item.ai_analysis && item.ai_analysis.summary ? item.ai_analysis.summary.toLowerCase().includes(q) : false;
-  const searchInVibe = item.ai_analysis && item.ai_analysis.vibe ? item.ai_analysis.vibe.toLowerCase().includes(q) : false;
-  const searchInType = item.type && item.type.toLowerCase() === q;
-
-  return searchInTitle || searchInText || searchInSummary || searchInVibe || searchInType;
-}
-
 function renderAutoCuratedTags() {
   const container = document.getElementById('sidebar-tags');
   if (!container) return;
@@ -6326,7 +6202,7 @@ function renderAutoCuratedTags() {
   if (topTags.length === 0) {
     container.innerHTML = `
       <div style="font-size: 0.8rem; color: var(--text-muted); padding: 8px 12px; font-style: italic;">
-        No tags curated yet.
+        No smart spaces curated yet.
       </div>
     `;
     return;
@@ -6340,12 +6216,11 @@ function renderAutoCuratedTags() {
     
     navItem.innerHTML = `
       <div class="folder-nav-info">
-        <span class="folder-emoji">#</span>
+        <span class="folder-emoji">✨</span>
         <span class="folder-name">${tagInfo.tag}</span>
       </div>
       <div style="display: flex; align-items: center; gap: 8px;">
         <span class="folder-count">${tagInfo.count}</span>
-        <span class="tag-nav-pin" title="Pin tag as a Smart Space">📌</span>
       </div>
     `;
     
@@ -6357,14 +6232,6 @@ function renderAutoCuratedTags() {
       closeMobileSidebar();
     });
     
-    const pinBtn = navItem.querySelector('.tag-nav-pin');
-    if (pinBtn) {
-      pinBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        await pinTagAsSmartSpace(tagInfo.tag);
-      });
-    }
-    
     container.appendChild(navItem);
   });
 }
@@ -6374,6 +6241,7 @@ function getTopTags() {
   const tagCounts = {};
   driveFiles.forEach(item => {
     if (item.isPlaceholder) return;
+    if (item.type !== 'article') return; // Only curate tags for articles
     if (item.ai_analysis && Array.isArray(item.ai_analysis.tags)) {
       item.ai_analysis.tags.forEach(tag => {
         const t = tag.toLowerCase().trim();
@@ -6387,98 +6255,6 @@ function getTopTags() {
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, 5)
     .map(entry => ({ tag: entry[0], count: entry[1] }));
-}
-
-async function pinTagAsSmartSpace(tag) {
-  setSyncStatus('syncing', 'Saving Space...');
-  const newFolder = {
-    id: 'folder-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
-    name: tag.charAt(0).toUpperCase() + tag.slice(1) + ' Space',
-    emoji: '✨',
-    color: '#7a00df',
-    isSmart: true,
-    rule: { query: '#' + tag },
-    created_at: new Date().toISOString()
-  };
-
-  folders.push(newFolder);
-  
-  try {
-    const foldersFileId = safeStorage.getItem('folders_file_id');
-    await uploadFileContent(foldersFileId, folders);
-    saveFoldersCache();
-    renderSidebarFolders();
-    showToast(`Pinned tag #${tag} as Smart Space!`);
-    setSyncStatus('synced', 'Synced');
-  } catch (err) {
-    console.error('Failed to pin tag as Smart Space:', err);
-    showToast('Failed to save space to Google Drive.');
-    setSyncStatus('synced', 'Sync Failed');
-  }
-}
-
-let serendipityItems = [];
-
-function triggerSerendipity(shuffle = false) {
-  const serendipityGrid = document.getElementById('serendipity-grid');
-  if (!serendipityGrid) return;
-  
-  if (shuffle || serendipityItems.length === 0) {
-    serendipityItems = pickSerendipityItems(driveFiles, 6);
-  }
-  
-  serendipityGrid.innerHTML = '';
-  
-  if (serendipityItems.length === 0) {
-    serendipityGrid.innerHTML = `
-      <div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 40px; font-style: italic;">
-        Your mind space is currently empty. Try saving some notes or links first!
-      </div>
-    `;
-    return;
-  }
-  
-  serendipityItems.forEach(item => {
-    renderCard(item, serendipityGrid);
-  });
-}
-
-function pickSerendipityItems(items, count = 6) {
-  const validItems = items.filter(item => !item.isPlaceholder);
-  if (validItems.length <= count) {
-    return [...validItems];
-  }
-  
-  const sorted = [...validItems].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-  
-  const midIndex = Math.floor(sorted.length / 2);
-  const olderHalf = sorted.slice(0, midIndex);
-  const newerHalf = sorted.slice(midIndex);
-  
-  const selected = [];
-  const oldToPick = Math.min(Math.round(count * 0.7), olderHalf.length);
-  const newToPick = count - oldToPick;
-  
-  function pickRandomUnique(arr, n) {
-    const temp = [...arr];
-    const picked = [];
-    for (let i = 0; i < n; i++) {
-      if (temp.length === 0) break;
-      const idx = Math.floor(Math.random() * temp.length);
-      picked.push(temp.splice(idx, 1)[0]);
-    }
-    return picked;
-  }
-  
-  selected.push(...pickRandomUnique(olderHalf, oldToPick));
-  selected.push(...pickRandomUnique(newerHalf, newToPick));
-  
-  const remaining = sorted.filter(x => !selected.includes(x));
-  if (selected.length < count && remaining.length > 0) {
-    selected.push(...pickRandomUnique(remaining, count - selected.length));
-  }
-  
-  return selected.sort(() => Math.random() - 0.5);
 }
 
 function initDragAndDrop() {
