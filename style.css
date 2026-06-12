@@ -1861,6 +1861,24 @@ label {
    Google Keep Inspired Features (Pinning & Color Coding)
    ========================================================================== */
 
+/* --- Card Tutorial Badge --- */
+.card-tutorial-badge {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: var(--accent-purple-glow);
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  color: #e9d5ff;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  z-index: 10;
+  pointer-events: none;
+}
+
 /* --- Card Pin Button --- */
 .card-pin-btn {
   position: absolute;
@@ -2941,5 +2959,50 @@ label {
 #btn-remove-attached-file:hover {
   color: #ef4444 !important;
 }
+
+/* ==========================================================================
+   Serendipity & Smart Spaces Styles
+   ========================================================================== */
+.serendipity-canvas-view {
+  width: 100%;
+  margin-block-end: 20px;
+  animation: fadeIn 0.4s ease-out;
+}
+
+.btn-save-search:hover {
+  background: rgba(122, 0, 223, 0.35) !important;
+  border-color: var(--accent-purple-bright) !important;
+  transform: scale(1.02);
+}
+
+.smart-space-badge {
+  font-size: 0.75rem;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: #c084fc;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+}
+
+.tag-nav-pin {
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  padding: 2px 4px;
+}
+
+.folder-nav-item:hover .tag-nav-pin {
+  opacity: 0.7;
+}
+
+.tag-nav-pin:hover {
+  opacity: 1 !important;
+  color: var(--accent-purple-bright);
+}
+
 
 

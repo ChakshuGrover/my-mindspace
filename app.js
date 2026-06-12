@@ -67,8 +67,89 @@ const DEFAULT_CLIENT_ID = '345073896444-jvm03jjn5dn6pfh95d7jbtlh4shq4ooj.apps.go
 const STORAGE_KEYS = {
   CLIENT_ID: 'mymind_client_id',
   GEMINI_KEY: 'mymind_gemini_key',
-  ACCESS_TOKEN: 'mymind_access_token'
+  ACCESS_TOKEN: 'mymind_access_token',
+  TUTORIAL_COMPLETED: 'mymind_tutorial_completed'
 };
+
+function getTutorialCards() {
+  return [
+    {
+      id: 'tutorial-welcome',
+      created_at: new Date().toISOString(),
+      type: 'note',
+      title: 'Welcome to MyMindSpace! 🧠',
+      color: 'purple',
+      pinned: true,
+      isTutorial: true,
+      ai_analysis: {
+        summary: 'Your private digital canvas, stored safely in Google Drive.',
+        detailed_summary: 'MyMindSpace is a secure, serverless digital mindspace. Everything you save—notes, links, images, PDFs, checklists—is stored directly in your personal Google Drive appdata folder. No third-party databases, no tracking. Use Gemini AI to map, search, and chat with your thoughts.',
+        vibe: 'evocative and clean',
+        tags: ['welcome', 'privacy', 'tutorial'],
+        key_takeaways: ['Stored privately on Google Drive', 'No tracking or server storage', 'Gemini AI features']
+      },
+      content: {
+        raw_text: 'Welcome to MyMindSpace! 🧠\n\nThis is a private digital mindspace. Everything you save—notes, links, images, PDFs, checklists—is stored directly in your personal Google Drive appdata folder. No third-party databases, no tracking.\n\nKey features:\n• 🔒 Private Google Drive storage\n• ⚡ Cognitive Search with vector indexing\n• 💬 Chat with your entire Mindspace or specific cards\n• 🕸️ Spatial Canvas to map your thoughts visually',
+        word_count: 50,
+        reading_time_mins: 1
+      }
+    },
+    {
+      id: 'tutorial-ai',
+      created_at: new Date(Date.now() - 60000).toISOString(),
+      type: 'article',
+      title: 'Web Scraping & AI Power 🔗',
+      color: 'blue',
+      pinned: false,
+      isTutorial: true,
+      url: 'https://aistudio.google.com/',
+      ai_analysis: {
+        summary: 'How MyMindSpace leverages Gemini AI to extract summaries, tags, and key takeaways.',
+        detailed_summary: 'When you save a web link, the application automatically scrapes the content and uses Gemini to analyze it. It extracts a concise summary, tags, and key insights so you can search and reference them later. Connect your Gemini API Key in Settings to enable this!',
+        vibe: 'informative and automated',
+        tags: ['ai', 'gemini', 'web-clipper', 'automation'],
+        key_takeaways: ['Auto-scrapes link content', 'Generates summaries & tags', 'Requires Gemini API key']
+      },
+      content: {
+        raw_text: 'Web Scraping & AI Power 🔗\n\nWhen you save a web link, the application automatically scrapes the content and uses Gemini to analyze it. It extracts a concise summary, tags, and key insights so you can search and reference them later. Connect your Gemini API Key in Settings to enable this!',
+        word_count: 45,
+        reading_time_mins: 1
+      }
+    },
+    {
+      id: 'tutorial-tasks',
+      created_at: new Date(Date.now() - 120000).toISOString(),
+      type: 'todo',
+      title: 'Task Management & Checklists ⏳',
+      color: 'yellow',
+      pinned: false,
+      isTutorial: true,
+      ai_analysis: {
+        summary: 'Track your action items, plans, or checklists directly in the canvas.',
+        detailed_summary: 'You can turn any note into a Todo list. Tap the checkbox to mark items as completed or keep track of your tasks directly from the grid or details view.',
+        vibe: 'action-oriented and clean',
+        tags: ['todo', 'productivity', 'tasks'],
+        key_takeaways: ['Create checklist cards', 'Check items off in grid or detail modal']
+      },
+      content: {
+        raw_text: 'Create a note as a Todo list to keep track of tasks.',
+        word_count: 20,
+        reading_time_mins: 1,
+        todos: [
+          { text: 'Connect Gemini API Key in Settings ⚙️', completed: false },
+          { text: 'Try creating your first note using the input bar below ✍️', completed: false },
+          { text: 'Toggle the Spatial Canvas view to see your thoughts map out 🕸️', completed: false }
+        ]
+      }
+    }
+  ];
+}
+
+function markTutorialAsCompleted() {
+  if (safeStorage.getItem(STORAGE_KEYS.TUTORIAL_COMPLETED) !== 'true') {
+    safeStorage.setItem(STORAGE_KEYS.TUTORIAL_COMPLETED, 'true');
+  }
+}
 
 // --- Local Cache Helpers ---
 function sanitizeMindItem(item) {
@@ -856,6 +937,11 @@ function setupEventListeners() {
     const query = e.target.value.trim();
     clearTimeout(searchTimeout);
     
+    const saveSearchBtn = document.getElementById('btn-save-search');
+    if (saveSearchBtn) {
+      saveSearchBtn.style.display = query ? 'flex' : 'none';
+    }
+    
     if (!query) {
       resetAISearch();
       renderGrid();
@@ -872,6 +958,56 @@ function setupEventListeners() {
       executeAISearch(query);
     }, 600);
   });
+
+  // Space modal type toggle
+  const typeManual = document.getElementById('space-type-manual');
+  const typeSmart = document.getElementById('space-type-smart');
+  const smartRuleContainer = document.getElementById('smart-space-rule-container');
+  
+  if (typeManual && typeSmart && smartRuleContainer) {
+    const toggleRuleInput = () => {
+      if (typeSmart.checked) {
+        smartRuleContainer.style.display = 'block';
+        const queryInput = document.getElementById('space-rule-query-input');
+        if (queryInput) queryInput.focus();
+      } else {
+        smartRuleContainer.style.display = 'none';
+      }
+    };
+    typeManual.addEventListener('change', toggleRuleInput);
+    typeSmart.addEventListener('change', toggleRuleInput);
+  }
+
+  // Save Search Space click
+  const btnSaveSearch = document.getElementById('btn-save-search');
+  if (btnSaveSearch) {
+    btnSaveSearch.addEventListener('click', () => {
+      const query = document.getElementById('search-input').value.trim();
+      if (!query) return;
+      openModal('folder-modal');
+      const radioSmart = document.getElementById('space-type-smart');
+      if (radioSmart) {
+        radioSmart.checked = true;
+        const container = document.getElementById('smart-space-rule-container');
+        if (container) container.style.display = 'block';
+      }
+      const ruleInput = document.getElementById('space-rule-query-input');
+      if (ruleInput) ruleInput.value = query;
+      const nameInput = document.getElementById('folder-name-input');
+      if (nameInput) {
+        nameInput.value = query.startsWith('#') ? query.substring(1) + ' Space' : query + ' Space';
+        nameInput.focus();
+      }
+    });
+  }
+
+  // Serendipity Shuffle click
+  const btnShuffle = document.getElementById('btn-serendipity-shuffle');
+  if (btnShuffle) {
+    btnShuffle.addEventListener('click', () => {
+      triggerSerendipity(true);
+    });
+  }
 
   // Hotkey commands (⌘K or Ctrl+K for search, Esc to close modals)
   window.addEventListener('keydown', (e) => {
@@ -904,6 +1040,12 @@ function setupEventListeners() {
         currentFilter = 'all';
         document.querySelectorAll('.sidebar-nav .nav-item, .folder-nav-item').forEach(el => el.classList.remove('active'));
         e.currentTarget.classList.add('active');
+      } else if (targetId === 'nav-view-serendipity') {
+        currentViewMode = 'serendipity';
+        currentFilter = 'all';
+        document.querySelectorAll('.sidebar-nav .nav-item, .folder-nav-item').forEach(el => el.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+        triggerSerendipity(true);
       } else {
         // Standard category filters (Notes, Articles, To-Dos)
         document.querySelectorAll('.sidebar-nav .nav-item, .folder-nav-item').forEach(el => el.classList.remove('active'));
@@ -1307,13 +1449,16 @@ async function saveNewFolder() {
   const nameInput = document.getElementById('folder-name-input');
   const emojiInput = document.getElementById('folder-emoji-input');
   const colorInput = document.getElementById('folder-color-input');
+  const typeSmart = document.getElementById('space-type-smart');
+  const isSmart = typeSmart ? typeSmart.checked : false;
+  const ruleQuery = isSmart ? (document.getElementById('space-rule-query-input').value.trim() || nameInput.value.trim()) : '';
   
   const name = nameInput.value.trim();
-  const emoji = emojiInput.value.trim() || '📁';
+  const emoji = isSmart ? '✨' : (emojiInput.value.trim() || '📁');
   const color = colorInput.value;
 
   if (!name) {
-    showToast('Folder name cannot be empty.');
+    showToast('Space name cannot be empty.');
     return;
   }
 
@@ -1322,6 +1467,8 @@ async function saveNewFolder() {
     name: name,
     emoji: emoji,
     color: color,
+    isSmart: isSmart,
+    rule: isSmart ? { query: ruleQuery } : null,
     created_at: new Date().toISOString()
   };
 
@@ -1330,31 +1477,40 @@ async function saveNewFolder() {
   // Reset inputs
   nameInput.value = '';
   emojiInput.value = '📁';
+  const manualRadio = document.getElementById('space-type-manual');
+  if (manualRadio) manualRadio.checked = true;
+  const smartRuleContainer = document.getElementById('smart-space-rule-container');
+  if (smartRuleContainer) smartRuleContainer.style.display = 'none';
+  const ruleInput = document.getElementById('space-rule-query-input');
+  if (ruleInput) ruleInput.value = '';
   
   closeModal('folder-modal');
-  setSyncStatus('syncing', 'Saving Folder...');
+  setSyncStatus('syncing', 'Saving Space...');
 
   try {
     const foldersFileId = safeStorage.getItem('folders_file_id');
     await uploadFileContent(foldersFileId, folders);
     saveFoldersCache();
     renderSidebarFolders();
-    showToast(`Created folder "${name}"`);
+    showToast(`Created space "${name}"`);
     setSyncStatus('synced', 'Synced');
   } catch (err) {
-    console.error('Failed to save new folder to Google Drive:', err);
-    showToast('Failed to save folder to Google Drive.');
+    console.error('Failed to save new space to Google Drive:', err);
+    showToast('Failed to save space to Google Drive.');
     setSyncStatus('synced', 'Sync Failed');
   }
 }
 
 function renderSidebarFolders() {
   const container = document.getElementById('sidebar-folders');
+  if (!container) return;
   container.innerHTML = '';
 
   folders.forEach(folder => {
-    // Count items belonging to this folder
-    const count = driveFiles.filter(item => item.folders && item.folders.includes(folder.id)).length;
+    // Count items belonging to this space
+    const count = folder.isSmart
+      ? driveFiles.filter(item => itemMatchesSmartSpace(item, folder.rule.query)).length
+      : driveFiles.filter(item => item.folders && item.folders.includes(folder.id)).length;
     
     const navItem = document.createElement('button');
     navItem.className = `folder-nav-item ${currentFilter === 'folder-' + folder.id ? 'active' : ''}`;
@@ -1365,10 +1521,11 @@ function renderSidebarFolders() {
         <span class="folder-dot" style="background-color: ${folder.color};"></span>
         <span class="folder-emoji">${folder.emoji}</span>
         <span class="folder-name">${folder.name}</span>
+        ${folder.isSmart ? `<span class="smart-space-badge" style="margin-inline-start: 6px;">Smart</span>` : ''}
       </div>
       <div style="display: flex; align-items: center; gap: 8px;">
         <span class="folder-count">${count}</span>
-        <span class="btn-delete-folder" title="Delete Folder">&times;</span>
+        <span class="btn-delete-folder" title="Delete Space">&times;</span>
       </div>
     `;
 
@@ -1390,6 +1547,9 @@ function renderSidebarFolders() {
 
     container.appendChild(navItem);
   });
+
+  // Render auto-curated tags
+  renderAutoCuratedTags();
 }
 
 async function confirmDeleteFolder(folderId, folderName) {
@@ -1611,6 +1771,8 @@ function resetAISearch() {
   if (container) container.classList.remove('ai-searching');
   const loader = document.getElementById('search-loader');
   if (loader) loader.setAttribute('hidden', 'true');
+  const saveSearchBtn = document.getElementById('btn-save-search');
+  if (saveSearchBtn) saveSearchBtn.style.display = 'none';
 }
 
 async function executeAISearch(query) {
@@ -2038,6 +2200,7 @@ async function saveNewItem() {
 
   // Add to local list and render visual grid immediately
   driveFiles.unshift(placeholderItem);
+  markTutorialAsCompleted();
   renderGrid();
 
   // Run the background save asynchronously
@@ -2061,6 +2224,7 @@ function addNewItemDirectly(rawInputText, folderId = '') {
 
   // Add to local list and render visual grid immediately
   driveFiles.unshift(placeholderItem);
+  markTutorialAsCompleted();
   renderGrid();
 
   // Run the background save asynchronously
@@ -2331,6 +2495,10 @@ async function runBackgroundSave(placeholderId, rawInputText, folderId, itemType
 }
 
 async function deleteItem(itemId, driveFileId) {
+  if (itemId && itemId.startsWith('tutorial-')) {
+    showToast('This is a guide card. Create your first real card to clear them.');
+    return;
+  }
   const confirmed = await showConfirm(
     'Forget Item',
     'Are you sure you want to forget this from your mind?',
@@ -2404,54 +2572,62 @@ function renderGrid() {
   
   // Filter items based on current view/folder and search text
   let filteredItems;
-  if (query && aiFilteredIds !== null) {
-    filteredItems = aiFilteredIds
-      .map(id => driveFiles.find(item => item.id === id))
-      .filter(Boolean);
-      
-    filteredItems = filteredItems.filter(item => {
-      if (item.isPlaceholder) return true;
-      if (currentFilter.startsWith('folder-')) {
-        const folderId = currentFilter.substring(7);
-        if (!item.folders || !item.folders.includes(folderId)) return false;
-      } else if (currentFilter === 'type-article' && item.type !== 'article') return false;
-      else if (currentFilter === 'type-note' && item.type !== 'note') return false;
-      else if (currentFilter === 'type-todo' && item.type !== 'todo') return false;
-      else if (currentFilter === 'type-image' && item.type !== 'image') return false;
-      else if (currentFilter === 'type-pdf' && item.type !== 'pdf') return false;
-      return true;
-    });
+  const hasNoCards = driveFiles.filter(item => !item.isPlaceholder).length === 0;
+  const tutorialCompleted = safeStorage.getItem(STORAGE_KEYS.TUTORIAL_COMPLETED) === 'true';
+  const showTutorial = hasNoCards && !tutorialCompleted && !query && currentFilter === 'all';
+
+  if (showTutorial) {
+    filteredItems = getTutorialCards().map(sanitizeMindItem);
   } else {
-    filteredItems = driveFiles.filter(item => {
-      if (item.isPlaceholder) return true;
-      if (currentFilter.startsWith('folder-')) {
-        const folderId = currentFilter.substring(7);
-        if (!item.folders || !item.folders.includes(folderId)) return false;
-      } else if (currentFilter === 'type-article' && item.type !== 'article') return false;
-      else if (currentFilter === 'type-note' && item.type !== 'note') return false;
-      else if (currentFilter === 'type-todo' && item.type !== 'todo') return false;
-      else if (currentFilter === 'type-image' && item.type !== 'image') return false;
-      else if (currentFilter === 'type-pdf' && item.type !== 'pdf') return false;
+    if (query && aiFilteredIds !== null) {
+      filteredItems = aiFilteredIds
+        .map(id => driveFiles.find(item => item.id === id))
+        .filter(Boolean);
+        
+      filteredItems = filteredItems.filter(item => itemMatchesFilter(item, currentFilter));
+    } else {
+      filteredItems = driveFiles.filter(item => {
+        if (!itemMatchesFilter(item, currentFilter)) return false;
 
-      if (query) {
-        const searchInTitle = item.title ? item.title.toLowerCase().includes(query) : false;
-        const searchInText = item.content && item.content.raw_text ? item.content.raw_text.toLowerCase().includes(query) : false;
-        const searchInSummary = item.ai_analysis && item.ai_analysis.summary ? item.ai_analysis.summary.toLowerCase().includes(query) : false;
-        const searchInVibe = item.ai_analysis && item.ai_analysis.vibe ? item.ai_analysis.vibe.toLowerCase().includes(query) : false;
-        const searchInTags = item.ai_analysis && item.ai_analysis.tags ? item.ai_analysis.tags.some(tag => tag.toLowerCase().includes(query)) : false;
-        const searchInType = item.type.toLowerCase() === query;
+        if (query) {
+          const searchInTitle = item.title ? item.title.toLowerCase().includes(query) : false;
+          const searchInText = item.content && item.content.raw_text ? item.content.raw_text.toLowerCase().includes(query) : false;
+          const searchInSummary = item.ai_analysis && item.ai_analysis.summary ? item.ai_analysis.summary.toLowerCase().includes(query) : false;
+          const searchInVibe = item.ai_analysis && item.ai_analysis.vibe ? item.ai_analysis.vibe.toLowerCase().includes(query) : false;
+          const searchInTags = item.ai_analysis && item.ai_analysis.tags ? item.ai_analysis.tags.some(tag => tag.toLowerCase().includes(query)) : false;
+          const searchInType = item.type.toLowerCase() === query;
 
-        return searchInTitle || searchInText || searchInSummary || searchInVibe || searchInTags || searchInType;
-      }
+          return searchInTitle || searchInText || searchInSummary || searchInVibe || searchInTags || searchInType;
+        }
 
-      return true;
-    });
+        return true;
+      });
+    }
   }
 
   const pinnedSection = document.getElementById('pinned-section');
   const pinnedGrid = document.getElementById('pinned-grid');
   const othersTitle = document.getElementById('others-title');
   const othersSection = document.getElementById('others-section');
+
+  const serendipityView = document.getElementById('serendipity-canvas-view');
+  if (currentViewMode === 'serendipity') {
+    if (pinnedSection) pinnedSection.setAttribute('hidden', 'true');
+    if (othersSection) othersSection.setAttribute('hidden', 'true');
+    if (othersTitle) othersTitle.setAttribute('hidden', 'true');
+    grid.style.display = 'none';
+    
+    stopPhysicsSimulation();
+    const spatialView = document.getElementById('spatial-canvas-view');
+    if (spatialView) spatialView.setAttribute('hidden', 'true');
+    
+    if (serendipityView) serendipityView.removeAttribute('hidden');
+    emptyState.setAttribute('hidden', 'true');
+    triggerSerendipity(false);
+    return;
+  } else {
+    if (serendipityView) serendipityView.setAttribute('hidden', 'true');
+  }
 
   if (currentViewMode === 'spatial') {
     if (pinnedSection) pinnedSection.setAttribute('hidden', 'true');
@@ -2502,189 +2678,16 @@ function renderGrid() {
       if (othersTitle) othersTitle.setAttribute('hidden', 'true');
     }
 
-    const renderCard = (item, targetGrid) => {
-      const card = document.createElement('div');
-      card.dataset.id = item.id;
-
-      if (item.isPlaceholder) {
-        card.className = 'mind-card mind-card--placeholder';
-        card.innerHTML = `
-          <div class="card-placeholder-shimmer">
-            <div class="card-placeholder-header">
-              <span class="sparkle-icon-animated">✨</span>
-              <span>MyMindSpace is thinking...</span>
-            </div>
-            <div class="card-placeholder-line card-placeholder-line--long"></div>
-            <div class="card-placeholder-line card-placeholder-line--short"></div>
-          </div>
-        `;
-        card.addEventListener('click', () => showToast('AI is still processing this item...'));
-        targetGrid.appendChild(card);
-        return;
-      }
-
-      card.className = `mind-card mind-card--${item.type} color-${item.color || 'default'}`;
-
-      // Card rendering template based on types
-      if (item.type === 'todo') {
-        const todos = item.content.todos || [];
-        const visibleTodos = todos.slice(0, 5);
-        const remainingCount = todos.length - visibleTodos.length;
-        
-        const todoListHtml = visibleTodos.map((todo, idx) => `
-          <label class="card-todo-item" style="display: flex; align-items: flex-start; gap: 8px; font-size: 0.9rem; margin-block-end: 6px; cursor: pointer; pointer-events: auto;">
-            <input type="checkbox" class="card-todo-checkbox" data-item-id="${item.id}" data-todo-index="${idx}" ${todo.completed ? 'checked' : ''} style="margin-block-start: 3px;" />
-            <span class="card-todo-text" style="text-decoration: ${todo.completed ? 'line-through' : 'none'}; color: ${todo.completed ? 'var(--text-muted)' : 'var(--text-primary)'};">${todo.text}</span>
-          </label>
-        `).join('');
-
-        card.innerHTML = `
-          <div class="card-note-title" style="margin-block-end: 12px; padding-inline-end: 28px;">${item.title}</div>
-          <div class="card-todo-list" style="margin-block-end: 12px; pointer-events: auto;">
-            ${todoListHtml || '<div style="color: var(--text-muted); font-style: italic;">Empty list</div>'}
-            ${remainingCount > 0 ? `<div style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-inline-start: 22px; margin-block-start: 4px;">+ ${remainingCount} more tasks</div>` : ''}
-          </div>
-          <div class="card-meta">
-            <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
-          </div>
-        `;
-      }
-      else if (item.type === 'article') {
-        const thumbImg = item.image ? `<img class="card-article-thumb" src="${item.image}" alt="${item.title}" onerror="this.style.display='none';" />` : '';
-        card.innerHTML = `
-          ${thumbImg}
-          <div class="card-article-content">
-            <div class="card-article-source" style="padding-inline-end: 28px;">${item.title}</div>
-            <div class="card-article-title">${item.ai_analysis.detailed_summary || item.ai_analysis.summary}</div>
-            <div class="card-meta">
-              <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
-            </div>
-          </div>
-        `;
-      } 
-      else if (item.type === 'image') {
-        card.innerHTML = `
-          <div class="card-image-preview-wrapper">
-            <div class="card-image-loading-placeholder">
-              <svg class="spinner-svg" viewBox="0 0 24 24" width="16" height="16" style="animation: spin 1s linear infinite;">
-                <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="32" stroke-linecap="round" />
-              </svg>
-              <span>Loading Image...</span>
-            </div>
-          </div>
-          <div class="card-article-content">
-            <div class="card-article-source" style="padding-inline-end: 28px;">📷 ${item.title}</div>
-            <div class="card-article-title" style="margin-block-start: 4px;">${item.ai_analysis.summary}</div>
-            <div class="card-meta">
-              <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
-            </div>
-          </div>
-        `;
-        
-        if (item.file_id) {
-          getDriveFileBlobUrl(item.file_id).then(blobUrl => {
-            const wrapper = card.querySelector('.card-image-preview-wrapper');
-            if (wrapper) {
-              if (blobUrl) {
-                wrapper.innerHTML = `<img class="card-grid-image" src="${blobUrl}" alt="${item.title}" style="width: 100%; display: block; object-fit: cover; max-height: 220px;" />`;
-              } else {
-                wrapper.innerHTML = `<div class="card-image-error" style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 0.85rem;">Failed to load image</div>`;
-              }
-            }
-          });
-        }
-      }
-      else if (item.type === 'pdf') {
-        card.innerHTML = `
-          <div class="card-pdf-wrapper" style="padding: 16px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border-glass); background: rgba(239, 68, 68, 0.05);">
-            <div class="card-pdf-icon" style="color: #ef4444; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
-              <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-              </svg>
-            </div>
-            <div style="overflow: hidden;">
-              <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${item.title}</div>
-              <div style="font-size: 0.75rem; color: var(--text-muted); margin-block-start: 2px;">PDF Document • ${formatBytes(item.file_size)}</div>
-            </div>
-          </div>
-          <div class="card-article-content">
-            <div class="card-article-title">${item.ai_analysis.summary}</div>
-            <div class="card-meta">
-              <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
-            </div>
-          </div>
-        `;
-      }
-      else { // note
-        card.innerHTML = `
-          <div class="card-note-title" style="padding-inline-end: 28px;">${item.title}</div>
-          <div class="card-note-desc">${item.ai_analysis.detailed_summary || item.ai_analysis.summary}</div>
-          <div class="card-meta">
-            <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
-          </div>
-        `;
-      }
-
-      // Add Pin/Unpin button to card
-      const pinBtn = document.createElement('button');
-      pinBtn.className = `card-pin-btn ${item.pinned ? 'is-pinned' : ''}`;
-      pinBtn.title = item.pinned ? 'Unpin note' : 'Pin note';
-      pinBtn.innerHTML = `
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="${item.pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="17" x2="12" y2="22"></line>
-          <path d="M5 17h14v-1.76a2 2 0 0 0-.44-1.24l-2.78-3.5A2 2 0 0 1 15 9.26V5a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4.26a2 2 0 0 1-.78 1.24l-2.78 3.5a2 2 0 0 0-.44 1.24z"></path>
-        </svg>
-      `;
-      pinBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        togglePin(item);
-      });
-      card.appendChild(pinBtn);
-
-      // Add click to open Detail Modal
-      card.addEventListener('click', (e) => {
-        if (e.target.classList.contains('card-todo-checkbox') || e.target.closest('.card-pin-btn')) {
-          return;
-        }
-        showDetailModal(item);
-      });
-
-      // Bind checkbox change handlers inside card
-      card.querySelectorAll('.card-todo-checkbox').forEach(cb => {
-        cb.addEventListener('change', async (e) => {
-          const idx = parseInt(e.target.dataset.todoIndex, 10);
-          if (!item.content.todos) item.content.todos = [];
-          item.content.todos[idx].completed = cb.checked;
-          
-          const textEl = cb.nextElementSibling;
-          if (textEl) {
-            textEl.style.textDecoration = cb.checked ? 'line-through' : 'none';
-            textEl.style.color = cb.checked ? 'var(--text-muted)' : 'var(--text-primary)';
-          }
-
-          setSyncStatus('syncing', 'Updating task...');
-          try {
-            await uploadFileContent(item._drive_file_id, item);
-            saveFilesCache();
-            setSyncStatus('synced', 'Synced');
-          } catch (err) {
-            console.error('Failed to update task state on Drive:', err);
-            showToast('Sync failed.');
-            setSyncStatus('synced', 'Sync Failed');
-          }
-        });
-      });
-
-      targetGrid.appendChild(card);
-    };
-
     pinnedItems.forEach(item => renderCard(item, pinnedGrid));
     othersItems.forEach(item => renderCard(item, grid));
   }
 }
 
 async function togglePin(item) {
+  if (item.isTutorial) {
+    showToast('This is a guide card. Create your first real card to clear them.');
+    return;
+  }
   item.pinned = !item.pinned;
   
   // Re-render locally for instant visual feedback
@@ -2724,7 +2727,7 @@ function showDetailModal(item) {
   const tagsContainer = document.getElementById('detail-tags-list');
   const typeBadge = document.getElementById('detail-type-badge');
 
-  typeBadge.textContent = item.type;
+  typeBadge.textContent = item.isTutorial ? `${item.type} (Guide)` : item.type;
   tagsContainer.innerHTML = (item.ai_analysis.tags || []).map(tag => `<span class="card-tag">#${tag}</span>`).join('');
   document.getElementById('detail-date').textContent = formatCardDate(item.created_at);
 
@@ -2741,22 +2744,27 @@ function showDetailModal(item) {
   // Setup detail pin button
   const btnPin = document.getElementById('btn-detail-pin');
   if (btnPin) {
-    btnPin.className = `btn-detail-action ${item.pinned ? 'is-pinned' : ''}`;
-    btnPin.title = item.pinned ? 'Unpin note' : 'Pin note';
-    
-    const newBtnPin = btnPin.cloneNode(true);
-    btnPin.parentNode.replaceChild(newBtnPin, btnPin);
-    newBtnPin.addEventListener('click', async () => {
-      await togglePin(item);
-      newBtnPin.className = `btn-detail-action ${item.pinned ? 'is-pinned' : ''}`;
-      newBtnPin.title = item.pinned ? 'Unpin note' : 'Pin note';
-    });
+    if (item.isTutorial) {
+      btnPin.style.display = 'none';
+    } else {
+      btnPin.style.display = 'inline-flex';
+      btnPin.className = `btn-detail-action ${item.pinned ? 'is-pinned' : ''}`;
+      btnPin.title = item.pinned ? 'Unpin note' : 'Pin note';
+      
+      const newBtnPin = btnPin.cloneNode(true);
+      btnPin.parentNode.replaceChild(newBtnPin, btnPin);
+      newBtnPin.addEventListener('click', async () => {
+        await togglePin(item);
+        newBtnPin.className = `btn-detail-action ${item.pinned ? 'is-pinned' : ''}`;
+        newBtnPin.title = item.pinned ? 'Unpin note' : 'Pin note';
+      });
+    }
   }
 
   // Handle Chat button binding
   const btnChatItem = document.getElementById('btn-chat-item');
   if (btnChatItem) {
-    if (item.type === 'color') {
+    if (item.type === 'color' || item.isTutorial) {
       btnChatItem.style.display = 'none';
     } else {
       btnChatItem.style.display = 'inline-flex';
@@ -2778,14 +2786,24 @@ function showDetailModal(item) {
     btnEdit.parentNode.replaceChild(newBtnEdit, btnEdit);
     newBtnEdit.textContent = 'Edit';
     newBtnEdit.className = 'btn btn--secondary btn--small';
-    newBtnEdit.addEventListener('click', handleEditSaveClick);
+    if (item.isTutorial) {
+      newBtnEdit.style.display = 'none';
+    } else {
+      newBtnEdit.style.display = 'inline-flex';
+      newBtnEdit.addEventListener('click', handleEditSaveClick);
+    }
   }
 
   // Handle deletion binding
   const btnDelete = document.getElementById('btn-delete-item');
   const newBtnDelete = btnDelete.cloneNode(true);
   btnDelete.parentNode.replaceChild(newBtnDelete, btnDelete); // Remove previous listeners
-  newBtnDelete.addEventListener('click', () => deleteItem(item.id, item._drive_file_id));
+  if (item.isTutorial) {
+    newBtnDelete.style.display = 'none';
+  } else {
+    newBtnDelete.style.display = 'inline-flex';
+    newBtnDelete.addEventListener('click', () => deleteItem(item.id, item._drive_file_id));
+  }
 
   // Configure prominent open link button
   const btnOpenLink = document.getElementById('btn-open-link');
@@ -2857,6 +2875,12 @@ function showDetailModal(item) {
     // Bind change listener for detail checkboxes
     contentContainer.querySelectorAll('.detail-todo-checkbox').forEach(cb => {
       cb.addEventListener('change', async (e) => {
+        if (item.isTutorial) {
+          e.preventDefault();
+          cb.checked = !cb.checked;
+          showToast('Create your first note to clear the guide cards.');
+          return;
+        }
         const idx = parseInt(e.target.dataset.todoIndex, 10);
         if (!item.content.todos) item.content.todos = [];
         item.content.todos[idx].completed = cb.checked;
@@ -3722,6 +3746,7 @@ async function syncSettingsToDrive(geminiKey, opacity) {
 
 function logout() {
   safeStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+  safeStorage.removeItem(STORAGE_KEYS.TUTORIAL_COMPLETED);
   accessToken = null;
   driveFiles = [];
   folders = [];
@@ -4017,6 +4042,7 @@ function updateCanvasTransform() {
 }
 
 function debounceSaveItem(item) {
+  if (item.isTutorial) return;
   if (nodeSaveDebounceTimers[item.id]) {
     clearTimeout(nodeSaveDebounceTimers[item.id]);
   }
@@ -4352,7 +4378,9 @@ function renderSpatialCanvas(items) {
       item.canvas_x = col * 310 - 465;
       item.canvas_y = row * 210 - 210;
       unplacedCount++;
-      debounceSaveItem(item);
+      if (!item.isTutorial) {
+        debounceSaveItem(item);
+      }
     }
   });
 
@@ -4474,23 +4502,31 @@ function renderSpatialCanvas(items) {
       `;
     }
 
-    const pinBtn = document.createElement('button');
-    pinBtn.className = `card-pin-btn ${item.pinned ? 'is-pinned' : ''}`;
-    pinBtn.title = item.pinned ? 'Unpin note' : 'Pin note';
-    pinBtn.innerHTML = `
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="${item.pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="12" y1="17" x2="12" y2="22"></line>
-        <path d="M5 17h14v-1.76a2 2 0 0 0-.44-1.24l-2.78-3.5A2 2 0 0 1 15 9.26V5a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4.26a2 2 0 0 1-.78 1.24l-2.78 3.5a2 2 0 0 0-.44 1.24z"></path>
-      </svg>
-    `;
-    pinBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      togglePin(item);
-    });
-    card.appendChild(pinBtn);
+    // Add Pin/Unpin button to card or Tutorial Badge
+    if (item.isTutorial) {
+      const tutorialBadge = document.createElement('div');
+      tutorialBadge.className = 'card-tutorial-badge';
+      tutorialBadge.textContent = 'Guide';
+      card.appendChild(tutorialBadge);
+    } else {
+      const pinBtn = document.createElement('button');
+      pinBtn.className = `card-pin-btn ${item.pinned ? 'is-pinned' : ''}`;
+      pinBtn.title = item.pinned ? 'Unpin note' : 'Pin note';
+      pinBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="${item.pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="17" x2="12" y2="22"></line>
+          <path d="M5 17h14v-1.76a2 2 0 0 0-.44-1.24l-2.78-3.5A2 2 0 0 1 15 9.26V5a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4.26a2 2 0 0 1-.78 1.24l-2.78 3.5a2 2 0 0 0-.44 1.24z"></path>
+        </svg>
+      `;
+      pinBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        togglePin(item);
+      });
+      card.appendChild(pinBtn);
+    }
 
     card.addEventListener('click', (e) => {
-      if (e.target.classList.contains('card-todo-checkbox') || e.target.closest('.card-pin-btn') || isLinking) {
+      if (e.target.classList.contains('card-todo-checkbox') || e.target.closest('.card-pin-btn') || e.target.closest('.card-tutorial-badge') || isLinking) {
         return;
       }
       if (canvasNodeDragged) {
@@ -4502,6 +4538,12 @@ function renderSpatialCanvas(items) {
 
     card.querySelectorAll('.card-todo-checkbox').forEach(cb => {
       cb.addEventListener('change', async (e) => {
+        if (item.isTutorial) {
+          e.preventDefault();
+          cb.checked = !cb.checked;
+          showToast('Create your first note to clear the guide cards.');
+          return;
+        }
         const idx = parseInt(e.target.dataset.todoIndex, 10);
         if (!item.content.todos) item.content.todos = [];
         item.content.todos[idx].completed = cb.checked;
@@ -5875,6 +5917,7 @@ async function saveNewFileItem(file, descriptionText, folderId, color, customTit
   };
   
   driveFiles.unshift(placeholderItem);
+  markTutorialAsCompleted();
   renderGrid();
   
   try {
@@ -6034,6 +6077,410 @@ function removeAttachedFile() {
   }
 }
 
+function renderCard(item, targetGrid) {
+  const card = document.createElement('div');
+  card.dataset.id = item.id;
+
+  if (item.isPlaceholder) {
+    card.className = 'mind-card mind-card--placeholder';
+    card.innerHTML = `
+      <div class="card-placeholder-shimmer">
+        <div class="card-placeholder-header">
+          <span class="sparkle-icon-animated">✨</span>
+          <span>MyMindSpace is thinking...</span>
+        </div>
+        <div class="card-placeholder-line card-placeholder-line--long"></div>
+        <div class="card-placeholder-line card-placeholder-line--short"></div>
+      </div>
+    `;
+    card.addEventListener('click', () => showToast('AI is still processing this item...'));
+    targetGrid.appendChild(card);
+    return;
+  }
+
+  card.className = `mind-card mind-card--${item.type} color-${item.color || 'default'}`;
+
+  // Card rendering template based on types
+  if (item.type === 'todo') {
+    const todos = item.content.todos || [];
+    const visibleTodos = todos.slice(0, 5);
+    const remainingCount = todos.length - visibleTodos.length;
+    
+    const todoListHtml = visibleTodos.map((todo, idx) => `
+      <label class="card-todo-item" style="display: flex; align-items: flex-start; gap: 8px; font-size: 0.9rem; margin-block-end: 6px; cursor: pointer; pointer-events: auto;">
+        <input type="checkbox" class="card-todo-checkbox" data-item-id="${item.id}" data-todo-index="${idx}" ${todo.completed ? 'checked' : ''} style="margin-block-start: 3px;" />
+        <span class="card-todo-text" style="text-decoration: ${todo.completed ? 'line-through' : 'none'}; color: ${todo.completed ? 'var(--text-muted)' : 'var(--text-primary)'};">${todo.text}</span>
+      </label>
+    `).join('');
+
+    card.innerHTML = `
+      <div class="card-note-title" style="margin-block-end: 12px; padding-inline-end: 28px;">${item.title}</div>
+      <div class="card-todo-list" style="margin-block-end: 12px; pointer-events: auto;">
+        ${todoListHtml || '<div style="color: var(--text-muted); font-style: italic;">Empty list</div>'}
+        ${remainingCount > 0 ? `<div style="font-size: 0.8rem; color: var(--text-muted); font-style: italic; margin-inline-start: 22px; margin-block-start: 4px;">+ ${remainingCount} more tasks</div>` : ''}
+      </div>
+      <div class="card-meta">
+        <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
+      </div>
+    `;
+  }
+  else if (item.type === 'article') {
+    const thumbImg = item.image ? `<img class="card-article-thumb" src="${item.image}" alt="${item.title}" onerror="this.style.display='none';" />` : '';
+    card.innerHTML = `
+      ${thumbImg}
+      <div class="card-article-content">
+        <div class="card-article-source" style="padding-inline-end: 28px;">${item.title}</div>
+        <div class="card-article-title">${item.ai_analysis.detailed_summary || item.ai_analysis.summary}</div>
+        <div class="card-meta">
+          <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
+        </div>
+      </div>
+    `;
+  } 
+  else if (item.type === 'image') {
+    card.innerHTML = `
+      <div class="card-image-preview-wrapper">
+        <div class="card-image-loading-placeholder">
+          <svg class="spinner-svg" viewBox="0 0 24 24" width="16" height="16" style="animation: spin 1s linear infinite;">
+            <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="32" stroke-linecap="round" />
+          </svg>
+          <span>Loading Image...</span>
+        </div>
+      </div>
+      <div class="card-article-content">
+        <div class="card-article-source" style="padding-inline-end: 28px;">📷 ${item.title}</div>
+        <div class="card-article-title" style="margin-block-start: 4px;">${item.ai_analysis.summary}</div>
+        <div class="card-meta">
+          <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
+        </div>
+      </div>
+    `;
+    
+    if (item.file_id) {
+      getDriveFileBlobUrl(item.file_id).then(blobUrl => {
+        const wrapper = card.querySelector('.card-image-preview-wrapper');
+        if (wrapper) {
+          if (blobUrl) {
+            wrapper.innerHTML = `<img class="card-grid-image" src="${blobUrl}" alt="${item.title}" style="width: 100%; display: block; object-fit: cover; max-height: 220px;" />`;
+          } else {
+            wrapper.innerHTML = `<div class="card-image-error" style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 0.85rem;">Failed to load image</div>`;
+          }
+        }
+      });
+    }
+  }
+  else if (item.type === 'pdf') {
+    card.innerHTML = `
+      <div class="card-pdf-wrapper" style="padding: 16px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border-glass); background: rgba(239, 68, 68, 0.05);">
+        <div class="card-pdf-icon" style="color: #ef4444; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+          <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+        </div>
+        <div style="overflow: hidden;">
+          <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${item.title}</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-block-start: 2px;">PDF Document • ${formatBytes(item.file_size)}</div>
+        </div>
+      </div>
+      <div class="card-article-content">
+        <div class="card-article-title">${item.ai_analysis.summary}</div>
+        <div class="card-meta">
+          <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
+        </div>
+      </div>
+    `;
+  }
+  else { // note
+    card.innerHTML = `
+      <div class="card-note-title" style="padding-inline-end: 28px;">${item.title}</div>
+      <div class="card-note-desc">${item.ai_analysis.detailed_summary || item.ai_analysis.summary}</div>
+      <div class="card-meta">
+        <span class="card-date" style="margin-inline-start: auto;">${formatCardDate(item.created_at)}</span>
+      </div>
+    `;
+  }
+
+  // Add Pin/Unpin button to card or Tutorial Badge
+  if (item.isTutorial) {
+    const tutorialBadge = document.createElement('div');
+    tutorialBadge.className = 'card-tutorial-badge';
+    tutorialBadge.textContent = 'Guide';
+    card.appendChild(tutorialBadge);
+  } else {
+    const pinBtn = document.createElement('button');
+    pinBtn.className = `card-pin-btn ${item.pinned ? 'is-pinned' : ''}`;
+    pinBtn.title = item.pinned ? 'Unpin note' : 'Pin note';
+    pinBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="${item.pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="17" x2="12" y2="22"></line>
+        <path d="M5 17h14v-1.76a2 2 0 0 0-.44-1.24l-2.78-3.5A2 2 0 0 1 15 9.26V5a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4.26a2 2 0 0 1-.78 1.24l-2.78 3.5a2 2 0 0 0-.44 1.24z"></path>
+      </svg>
+    `;
+    pinBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePin(item);
+    });
+    card.appendChild(pinBtn);
+  }
+
+  // Add click to open Detail Modal
+  card.addEventListener('click', (e) => {
+    if (e.target.classList.contains('card-todo-checkbox') || e.target.closest('.card-pin-btn') || e.target.closest('.card-tutorial-badge')) {
+      return;
+    }
+    showDetailModal(item);
+  });
+
+  // Bind checkbox change handlers inside card
+  card.querySelectorAll('.card-todo-checkbox').forEach(cb => {
+    cb.addEventListener('change', async (e) => {
+      const index = parseInt(cb.dataset.todoIndex, 10);
+      if (item.content && item.content.todos && item.content.todos[index]) {
+        item.content.todos[index].completed = cb.checked;
+      }
+      
+      const textEl = cb.nextElementSibling;
+      if (textEl) {
+        textEl.style.textDecoration = cb.checked ? 'line-through' : 'none';
+        textEl.style.color = cb.checked ? 'var(--text-muted)' : 'var(--text-primary)';
+      }
+
+      setSyncStatus('syncing', 'Updating task...');
+      try {
+        await uploadFileContent(item._drive_file_id, item);
+        saveFilesCache();
+        setSyncStatus('synced', 'Synced');
+      } catch (err) {
+        console.error('Failed to update task state on Drive:', err);
+        showToast('Sync failed.');
+        setSyncStatus('synced', 'Sync Failed');
+      }
+    });
+  });
+
+  targetGrid.appendChild(card);
+}
+
+// --- Smart Spaces & Serendipity Helpers ---
+function itemMatchesFilter(item, filter) {
+  if (item.isPlaceholder) return true;
+  if (!filter || filter === 'all') return true;
+
+  if (filter.startsWith('folder-')) {
+    const folderId = filter.substring(7);
+    const folderObj = folders.find(f => f.id === folderId);
+    if (folderObj && folderObj.isSmart) {
+      return itemMatchesSmartSpace(item, folderObj.rule.query);
+    }
+    return item.folders && item.folders.includes(folderId);
+  }
+
+  if (filter.startsWith('tag-')) {
+    const tag = filter.substring(4).toLowerCase();
+    return item.ai_analysis && Array.isArray(item.ai_analysis.tags)
+      ? item.ai_analysis.tags.some(t => t.toLowerCase() === tag)
+      : false;
+  }
+
+  if (filter === 'type-article') return item.type === 'article';
+  if (filter === 'type-note') return item.type === 'note';
+  if (filter === 'type-todo') return item.type === 'todo';
+  if (filter === 'type-image') return item.type === 'image';
+  if (filter === 'type-pdf') return item.type === 'pdf';
+
+  return true;
+}
+
+function itemMatchesSmartSpace(item, query) {
+  if (!query || item.isPlaceholder) return false;
+  const q = query.toLowerCase().trim();
+  
+  let cleanQuery = q;
+  const isTagQuery = q.startsWith('#');
+  if (isTagQuery) {
+    cleanQuery = q.substring(1);
+  }
+  
+  const searchInTags = item.ai_analysis && Array.isArray(item.ai_analysis.tags)
+    ? item.ai_analysis.tags.some(tag => tag.toLowerCase() === cleanQuery || (!isTagQuery && tag.toLowerCase().includes(cleanQuery)))
+    : false;
+  if (searchInTags) return true;
+  if (isTagQuery) return false; 
+
+  const searchInTitle = item.title ? item.title.toLowerCase().includes(q) : false;
+  const searchInText = item.content && item.content.raw_text ? item.content.raw_text.toLowerCase().includes(q) : false;
+  const searchInSummary = item.ai_analysis && item.ai_analysis.summary ? item.ai_analysis.summary.toLowerCase().includes(q) : false;
+  const searchInVibe = item.ai_analysis && item.ai_analysis.vibe ? item.ai_analysis.vibe.toLowerCase().includes(q) : false;
+  const searchInType = item.type && item.type.toLowerCase() === q;
+
+  return searchInTitle || searchInText || searchInSummary || searchInVibe || searchInType;
+}
+
+function renderAutoCuratedTags() {
+  const container = document.getElementById('sidebar-tags');
+  if (!container) return;
+  container.innerHTML = '';
+  
+  const topTags = getTopTags();
+  if (topTags.length === 0) {
+    container.innerHTML = `
+      <div style="font-size: 0.8rem; color: var(--text-muted); padding: 8px 12px; font-style: italic;">
+        No tags curated yet.
+      </div>
+    `;
+    return;
+  }
+  
+  topTags.forEach(tagInfo => {
+    const isFiltered = currentFilter === 'tag-' + tagInfo.tag;
+    const navItem = document.createElement('button');
+    navItem.className = `folder-nav-item ${isFiltered ? 'active' : ''}`;
+    navItem.dataset.filter = 'tag-' + tagInfo.tag;
+    
+    navItem.innerHTML = `
+      <div class="folder-nav-info">
+        <span class="folder-emoji">#</span>
+        <span class="folder-name">${tagInfo.tag}</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="folder-count">${tagInfo.count}</span>
+        <span class="tag-nav-pin" title="Pin tag as a Smart Space">📌</span>
+      </div>
+    `;
+    
+    navItem.addEventListener('click', (e) => {
+      document.querySelectorAll('.sidebar-nav .nav-item, .folder-nav-item').forEach(el => el.classList.remove('active'));
+      navItem.classList.add('active');
+      currentFilter = navItem.dataset.filter;
+      renderGrid();
+      closeMobileSidebar();
+    });
+    
+    const pinBtn = navItem.querySelector('.tag-nav-pin');
+    if (pinBtn) {
+      pinBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await pinTagAsSmartSpace(tagInfo.tag);
+      });
+    }
+    
+    container.appendChild(navItem);
+  });
+}
+
+function getTopTags() {
+  const ignoredTags = new Set(['inbox', 'link', 'web', 'to-read', 'todo', 'note', 'article', 'color', 'saved note']);
+  const tagCounts = {};
+  driveFiles.forEach(item => {
+    if (item.isPlaceholder) return;
+    if (item.ai_analysis && Array.isArray(item.ai_analysis.tags)) {
+      item.ai_analysis.tags.forEach(tag => {
+        const t = tag.toLowerCase().trim();
+        if (t && !ignoredTags.has(t)) {
+          tagCounts[t] = (tagCounts[t] || 0) + 1;
+        }
+      });
+    }
+  });
+  return Object.entries(tagCounts)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 5)
+    .map(entry => ({ tag: entry[0], count: entry[1] }));
+}
+
+async function pinTagAsSmartSpace(tag) {
+  setSyncStatus('syncing', 'Saving Space...');
+  const newFolder = {
+    id: 'folder-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+    name: tag.charAt(0).toUpperCase() + tag.slice(1) + ' Space',
+    emoji: '✨',
+    color: '#7a00df',
+    isSmart: true,
+    rule: { query: '#' + tag },
+    created_at: new Date().toISOString()
+  };
+
+  folders.push(newFolder);
+  
+  try {
+    const foldersFileId = safeStorage.getItem('folders_file_id');
+    await uploadFileContent(foldersFileId, folders);
+    saveFoldersCache();
+    renderSidebarFolders();
+    showToast(`Pinned tag #${tag} as Smart Space!`);
+    setSyncStatus('synced', 'Synced');
+  } catch (err) {
+    console.error('Failed to pin tag as Smart Space:', err);
+    showToast('Failed to save space to Google Drive.');
+    setSyncStatus('synced', 'Sync Failed');
+  }
+}
+
+let serendipityItems = [];
+
+function triggerSerendipity(shuffle = false) {
+  const serendipityGrid = document.getElementById('serendipity-grid');
+  if (!serendipityGrid) return;
+  
+  if (shuffle || serendipityItems.length === 0) {
+    serendipityItems = pickSerendipityItems(driveFiles, 6);
+  }
+  
+  serendipityGrid.innerHTML = '';
+  
+  if (serendipityItems.length === 0) {
+    serendipityGrid.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 40px; font-style: italic;">
+        Your mind space is currently empty. Try saving some notes or links first!
+      </div>
+    `;
+    return;
+  }
+  
+  serendipityItems.forEach(item => {
+    renderCard(item, serendipityGrid);
+  });
+}
+
+function pickSerendipityItems(items, count = 6) {
+  const validItems = items.filter(item => !item.isPlaceholder);
+  if (validItems.length <= count) {
+    return [...validItems];
+  }
+  
+  const sorted = [...validItems].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  
+  const midIndex = Math.floor(sorted.length / 2);
+  const olderHalf = sorted.slice(0, midIndex);
+  const newerHalf = sorted.slice(midIndex);
+  
+  const selected = [];
+  const oldToPick = Math.min(Math.round(count * 0.7), olderHalf.length);
+  const newToPick = count - oldToPick;
+  
+  function pickRandomUnique(arr, n) {
+    const temp = [...arr];
+    const picked = [];
+    for (let i = 0; i < n; i++) {
+      if (temp.length === 0) break;
+      const idx = Math.floor(Math.random() * temp.length);
+      picked.push(temp.splice(idx, 1)[0]);
+    }
+    return picked;
+  }
+  
+  selected.push(...pickRandomUnique(olderHalf, oldToPick));
+  selected.push(...pickRandomUnique(newerHalf, newToPick));
+  
+  const remaining = sorted.filter(x => !selected.includes(x));
+  if (selected.length < count && remaining.length > 0) {
+    selected.push(...pickRandomUnique(remaining, count - selected.length));
+  }
+  
+  return selected.sort(() => Math.random() - 0.5);
+}
+
 function initDragAndDrop() {
   const overlay = document.getElementById('drag-drop-overlay');
   if (!overlay) return;
@@ -6087,5 +6534,6 @@ function initPasteHandler() {
     }
   });
 }
+
 
 
