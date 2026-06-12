@@ -1,6 +1,6 @@
 # MyMindSpace 🧠
 
-A private, elegant, serverless, AI-powered digital canvas to save your quotes, articles, notes, and colors. Fully sandboxed and 100% private, utilizing your own personal Google Drive as the storage backend—no third-party databases, tracking, or subscription fees.
+A private, ultimate-secure, and always-free digital canvas and spatial mind-map. Save notes, links, and files directly to your Google Drive with zero tracking or subscription fees. Powered by Gemini AI to organize, map, and chat with your thoughts.
 
 ---
 

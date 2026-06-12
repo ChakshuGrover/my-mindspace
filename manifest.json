@@ -1,7 +1,7 @@
 {
   "name": "MyMindSpace",
   "short_name": "MindSpace",
-  "description": "Your serverless, private, AI-powered visual mindspace.",
+  "description": "Your ultimate-secure, always-free private AI canvas.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
